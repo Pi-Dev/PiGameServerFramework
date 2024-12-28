@@ -16,4 +16,4 @@ Most examples here use binary stream messages, or strings.
 
 Included examples should be modified to match your requirements. 
 
-This project is under development, do not use it for now!
+**This project is under development, do not use it for now!**
