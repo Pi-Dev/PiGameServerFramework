@@ -13,12 +13,8 @@ using PiGSF.Utils;
 
 namespace Transport
 {
-    public class TcpTransport
+    public class TcpTransport: ITransport
     {
-        public TcpTransport(Server server)
-        {
-            this.server = server;
-        }
         Server server;
 
         // Static buffer for header parsing and pool of buffers for message data
@@ -26,8 +22,9 @@ namespace Transport
         ObjectPooler<byte[]> messageBuffers = new(() => new byte[1024]);
         TcpListener listener;
 
-        public void Listen(int port)
+        public void Init(int port, Server serverRef)
         {
+            this.server = serverRef;
             listener = new TcpListener(IPAddress.Any, port);
             listener.Start(100);
             Console.WriteLine($"Server started on {port}");

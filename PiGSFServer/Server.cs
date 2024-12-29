@@ -22,20 +22,71 @@ namespace PiGSF.Server
         ConcurrentBag<Player> knownPlayers = new();
         public Player? GetPlayerByUid(string uid) => knownPlayersByUid!.GetValueOrDefault(uid, null) ?? null;
 
+        List<ITransport> transports;
         public static Room? defaultRoom;
         TcpTransport TCP;
+
+        List<Type> InitRoomTypes()
+        {
+            Console.WriteLine("[===== Room Types =====]");
+            var ts = TypeLoader.GetSubclassesOf<Room>();
+            foreach (var r in ts)
+            {
+                Console.WriteLine($"|- {r.Name} [{r.FullName}]");
+            }
+            Console.WriteLine("|");
+            return ts;
+        }
+
+        List<Type> InitTransports()
+        {
+            Console.WriteLine("[===== Transports =====]");
+            var ts = TypeLoader.GetTypesImplementing<ITransport>();
+            foreach (var r in ts)
+            {
+                Console.WriteLine($"|- {r.Name} [{r.FullName}]");
+            }
+            Console.WriteLine("|");
+            return ts;
+        }
+
+        List<Type> InitAuthenticators()
+        {
+            Console.WriteLine("[=== Authenticators ===]");
+            var ts = TypeLoader.GetTypesImplementing<IAuthProvider>();
+            foreach (var r in ts)
+            {
+                Console.WriteLine($"|- {r.Name} [{r.FullName}]");
+            }
+            Console.WriteLine("|");
+            return ts;
+        }
+
 
         public Server(int port)
         {
             this.port = port;
             authenticator = new JWTAuth();
+            
+            var transports = InitTransports();
+            this.transports = new();
+            foreach (var t in transports)
+            {
+                var transport = Activator.CreateInstance(t) as ITransport;
+                if(transport != null) this.transports.Add(transport);
+            }
+            InitAuthenticators();
+            InitRoomTypes();
+
             defaultRoom = ServerConfig.defaultRoom;
-            TCP = new TcpTransport(this);
         }
 
         public void Start()
         {
-            TCP.Listen(port);
+            foreach (var t in transports)
+            {
+                t!.Init(port, this);
+            }
         }
 
         public void Stop()
