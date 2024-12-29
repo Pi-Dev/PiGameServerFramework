@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -21,11 +22,13 @@ namespace PiGSF.Client
         {
             string playerData = "Username";
 
-            var client = new Client(playerData);
+            var client = new Client();
             Console.WriteLine($"Connecting to {ClientConfig.serverAddress}:{ClientConfig.serverPort}...");
             try
             {
-                await client.Connect(ClientConfig.serverAddress, ClientConfig.serverPort);
+                await client.Connect(ClientConfig.serverAddress + ":" + ClientConfig.serverPort);
+                Console.WriteLine($"Connected");
+
             }
             catch (Exception ex)
             {
@@ -38,12 +41,21 @@ namespace PiGSF.Client
                 return;
             }
 
+            client.SendString(playerData);
+
+            // Message Pump Thread
+            var mpt = new Thread(() => {
+                while (true)
+                {
+                    var m = client.GetMessage();
+                    if (m != null) Console.WriteLine("Message: " + Encoding.UTF8.GetString(m));
+                }
+            });
+            mpt.Start();
+
             // Start main client loop
             while (true)
             {
-                var m = client.GetMessage();
-                if (m!=null) Console.WriteLine(m);
-
                 string? input = Console.ReadLine();
                 if (string.IsNullOrWhiteSpace(input)) continue;
                 else

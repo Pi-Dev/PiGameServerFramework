@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 using PiGSF.Server;
+using PiGSF.Server.Utils;
 using PiGSF.Utils;
 
 namespace Transport
@@ -48,32 +49,54 @@ namespace Transport
         // Handles client connection and authentication
         async void OnClientConnected(TcpClient client)
         {
-            var stream = client.GetStream();
             var hdrb = headerBuffers.Buy();
-            await stream.ReadExactlyAsync(hdrb, 0, (int)ServerConfig.HeaderSize);
-            int size = BitConverter.ToInt16(hdrb, 0);
-
-            // Avoid DDOS attackers, limit first pack to small size
-            if (size < 0 || size > ServerConfig.MaxInitialPacketSize)
+            (byte[] bytes, Action Dispose)? packet = null;
+            string data = string.Empty;
+            try
             {
-                Console.WriteLine("ERROR: Client sending negative or too big header. Disconnecting");
-                client.Close(); return;
+                var stream = client.GetStream();
+                client.NoDelay = true;
+                await stream.ReadExactlyAsync(hdrb, 0, (int)ServerConfig.HeaderSize);
+                int size = BitConverter.ToInt16(hdrb, 0);
+
+                // Avoid DDOS attackers, limit first pack to small size
+                if (size < 0 || size > ServerConfig.MaxInitialPacketSize)
+                {
+                    Console.WriteLine("ERROR: Client sending negative or too big header. Disconnecting");
+                    client.Close(); return;
+                }
+
+                packet = GetPacketBuffer(size);
+                await stream.ReadExactlyAsync(packet.Value.bytes, 0, size);
+
+                data = Encoding.UTF8.GetString(packet.Value.bytes, 0, size);
+                packet.Value.Dispose();
+                packet = null;
+
+                Console.WriteLine($"New client connected: {data}");
+                var player = await server.AuthenticatePlayer(data);
+                if (player == null)
+                {
+                    Console.WriteLine("ERROR: Client Unauthorized");
+                    client.Close(); return;
+                }
+
+                // Player is connected, create the API and give response
+                player._SendData = (data) => { var m = Message.Create(data); stream.WriteAsync(m, 0, m.Length); };
+                player._CloseConnection = stream.Close;
+
+                var s = $" => Player {player.name} [{player.uid}] connected to room {player.activeRoom.Id}";
+                player.Send([..BitConverter.GetBytes(player.activeRoom.Id), ..Encoding.UTF8.GetBytes(s)]);
             }
-
-            var packet = GetPacketBuffer(size);
-            await stream.ReadExactlyAsync(packet.bytes, 0, size);
-
-            string data = Encoding.UTF8.GetString(packet.bytes);
-            packet.Dispose();
-
-            var player = await server.AuthenticatePlayer(data);
-            if (player == null)
+            catch (Exception ex)
             {
-                Console.WriteLine("ERROR: Client Unauthorized");
-                client.Close(); return;
+                client.Close();
             }
-
-            Console.WriteLine($"New client connected: {data}");
+            finally
+            {
+                headerBuffers.Recycle(hdrb);
+                if (packet.HasValue) packet.Value.Dispose();
+            }
         }
 
         void OnAccept(IAsyncResult ar)
@@ -111,23 +134,6 @@ namespace Transport
             catch (Exception ex)
             {
                 Console.WriteLine($"Error sending data: {ex.Message}");
-            }
-        }
-
-        public static async Task<byte[]> ReceiveAsync(Stream connection)
-        {
-            var buffer = new byte[1024];
-            try
-            {
-                int bytesRead = await connection.ReadAsync(buffer, 0, buffer.Length);
-                var data = new byte[bytesRead];
-                Array.Copy(buffer, data, bytesRead);
-                return data;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error receiving data: {ex.Message}");
-                throw;
             }
         }
 

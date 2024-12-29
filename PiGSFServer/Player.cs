@@ -11,7 +11,7 @@ namespace PiGSF.Server
         public bool isSpectator;
 
         public Action? _CloseConnection;
-        public Action<byte[]>? _SendData;
+        public Action<byte[]> _SendData;
 
         public object? UserData { get; set; } // Game-specific user data
 

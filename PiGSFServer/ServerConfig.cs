@@ -50,7 +50,7 @@ namespace PiGSF.Server
         public static Room defaultRoom => new Rooms.ChatRoom("Lobby");
 
         // Authentication modules by default
-        public static IAuthProvider[] authProviders = [new JWTAuth()];
+        public static IAuthProvider[] authProviders = [new JWTAuth(), new NoAuthStable()];
 
         public static string JWTPrivateKey => LoadFileOrDefault("PIGSF-PRIVATE-JWT.PEM");
         public static string EncryptionPublicKey => LoadFileOrDefault("PIGSF-PUBLIC-RSA.PEM");
