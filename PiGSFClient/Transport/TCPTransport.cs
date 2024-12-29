@@ -62,7 +62,8 @@ namespace PiGSFClient.Transport
                         }
                     }
                 }
-                catch (Exception ex) { 
+                catch (Exception ex)
+                {
                     Console.WriteLine(ex.ToString());
                 }
                 finally
@@ -77,15 +78,22 @@ namespace PiGSFClient.Transport
             isConnected = true;
         }
 
-        void ITransport.SendBytes(byte[] data) => tcpStream.Write(Message.Create(data));
-        void ITransport.SendString(string data) => tcpStream.Write(Message.Create(Encoding.UTF8.GetBytes(data)));
+        void ITransport.SendBytes(byte[] data)
+        {
+            try { tcpStream.Write(Message.Create(data)); } catch { };
+        }
+        void ITransport.SendString(string data)
+        {
+            try { tcpStream.Write(Message.Create(Encoding.UTF8.GetBytes(data))); } catch { };
+        }
         bool ITransport.IsConnected() => isConnected;
         void ITransport.Close()
         {
             try
             {
                 tcpClient.Close(); tcpClient.Dispose(); isConnected = false;
-            }catch (Exception) { }
+            }
+            catch (Exception) { }
         }
 
         protected virtual void Dispose(bool disposing)

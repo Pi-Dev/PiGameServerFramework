@@ -63,7 +63,7 @@ namespace PiGSF.Server
                 player.name = pd.name;
                 knownPlayers.Add(player);
                 knownPlayersByUid[pd.uid] = player;
-                player.activeRoom = defaultRoom;
+                player.JoinRoom(defaultRoom);
             }
             return player;
         }

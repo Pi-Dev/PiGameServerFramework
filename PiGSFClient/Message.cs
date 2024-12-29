@@ -6,6 +6,36 @@ using System.Threading.Tasks;
 
 namespace PiGSF.Client.Utils
 {
+    public class MessageBuilder : BinaryWriter
+    {
+        // Builder API
+        readonly int sz = ClientConfig.HeaderSize;
+        MemoryStream? m_Stream;
+        public MessageBuilder() : base(new MemoryStream())
+        {
+            m_Stream = BaseStream as MemoryStream;
+            switch (sz)
+            {
+                case 1: Write((byte)0); break;
+                case 2: Write((ushort)0); break;
+                case 4: Write((uint)0); break;
+            }
+        }
+        public byte[] ToArray() // Patches the header
+        {
+            var len = m_Stream!.Length - sz;
+            m_Stream.Position = 0;
+            switch (sz)
+            {
+                case 1: Write((byte)len); break;
+                case 2: Write((ushort)len); break;
+                case 4: Write((uint)len); break;
+            }
+            m_Stream.Position = m_Stream.Length;
+            return m_Stream.ToArray();
+        }
+    }
+
     static class Message
     {
         // Create Message

@@ -17,7 +17,26 @@ namespace PiGSF.Server
         public string Name { get; set; }
 
         // Room properties
-        public int TickRate { get; set; } = 0;
+        CancellationTokenSource? cts; // For managing cancellation of the loop
+        int _tickRate = 0;
+        public int TickRate
+        {
+            get => _tickRate;
+            set {
+                if (_tickRate == value) return; 
+                cts?.Cancel();
+                Console.WriteLine("Tickrate change for room " + Id + " requested");
+                if (_tickRate > 0)
+                {
+                    messageQueue.Enqueue(new RoomEvent(() => {
+                        Console.WriteLine($"Tickrate for room {Id}: set to {value}");
+                        cts = new CancellationTokenSource();
+                        _ = UpdateLoop(cts.Token);
+                    }));
+                }
+                _tickRate = value;
+            }
+        }
         public int MinPlayers { get; set; } = 1;
         public int MaxPlayers { get; set; } = 16;
         public int MaxClients { get; set; } = 32;
@@ -33,11 +52,72 @@ namespace PiGSF.Server
         protected ConcurrentList<Player> ConnectedPlayers = new();
         protected HashSet<string> BannedPlayerUids = new();
 
+        // Player Messages & Room Message Queue
+        internal class IRoomEvent { };
+        internal class PlayerMessage : IRoomEvent { public Player pl; public byte[] msg; }
+        internal class PlayerJoin : IRoomEvent { public Player pl; }
+        internal class PlayerDisconnect : IRoomEvent { public Player pl; }
+        internal class PlayerReconnect : IRoomEvent { public Player pl; }
+        internal class RoomEvent : IRoomEvent { public Action func; public RoomEvent(Action f) { func = f; } }
+        internal ConcurrentQueue<IRoomEvent> messageQueue = new();
+
         private bool _isStarted = false;
         private bool _firstPlayerConnected = false;
         private CancellationTokenSource? startTimerCts;
 
         public bool IsStarted => _isStarted;
+
+        void RoomThread()
+        {
+            Console.WriteLine("Thread for room " + GetType().Name + " started");
+
+            cts = new CancellationTokenSource();
+            _ = UpdateLoop(cts.Token);
+
+            while (true)
+            {
+                Thread.Yield();
+
+                if (messageQueue.TryDequeue(out var item))
+                {
+                    if (item is PlayerMessage pm)
+                    {
+                        OnMessageReceived(pm.msg, pm.pl);
+                    }
+                    else if (item is PlayerJoin pj)
+                    {
+                    }
+                    else if (item is PlayerReconnect pr)
+                    {
+                    }
+                    else if (item is PlayerDisconnect pd)
+                    {
+                    }
+                    else if (item is RoomEvent re)
+                    {
+
+                    }
+                }
+            }
+        }
+        async Task UpdateLoop(CancellationToken ct)
+        {
+            while (true)
+            {
+                if (ct.IsCancellationRequested) return;
+                try
+                {
+                    var dt = 1 / TickRate;
+                    await Task.Delay(dt * 1000, ct);
+                    Update(dt);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    //task is cancelled, return or do something else
+                    return;
+                }
+            }
+        }
 
         // Constructor
         protected Room(string name = "")
@@ -49,11 +129,13 @@ namespace PiGSF.Server
             // Register rooms with the server
             rooms.Add(this);
             RoomsById[Id] = this;
-            if(!string.IsNullOrEmpty(name)) namedRooms[name] = this;
+            if (!string.IsNullOrEmpty(name)) namedRooms[name] = this;
 
+            var t = new Thread(RoomThread);
+            t.Start();
         }
 
-        // Lifecycle methods
+        // Lifecycle methods, called from the Room Thread, in the Room Thread
 
         public virtual void Start()
         {
@@ -71,15 +153,14 @@ namespace PiGSF.Server
         {
         }
 
-        public virtual void OnMessageReceived(object message, Player sender)
+        public virtual void OnMessageReceived(byte[] message, Player sender)
         {
         }
 
         // Room API
-        public void BroadcastMessage(object data, Player? sender = null)
+        public void BroadcastMessage(byte[] data, Player? sender = null)
         {
-            byte[] d = data is string s ? Encoding.UTF8.GetBytes(s) : JsonSerializer.SerializeToUtf8Bytes(data);
-            ConnectedPlayers.ForEach(p => { if (sender == null || p != sender) p.Send(d); });
+            ConnectedPlayers.ForEach(p => { if (sender == null || p != sender) p.Send(data); });
         }
 
         public void DisconnectPlayer(Player player, bool disband = false)
@@ -87,17 +168,20 @@ namespace PiGSF.Server
             player.Disconnect(disband);
         }
 
+        // Thread safety!!
         public void KickPlayer(Player player)
         {
             DisconnectPlayer(player, true);
         }
 
+        // Thread safety!!
         public void BanPlayer(Player player)
         {
             KickPlayer(player);
             BannedPlayerUids.Add(player.uid);
         }
 
+        // Thread safety!!
         public bool IsPlayerConnected(Player player)
         {
             return player.IsConnected();
@@ -129,7 +213,8 @@ namespace PiGSF.Server
                 return false;
             }
 
-            ConnectedPlayers.Add(player);
+            bool isReconnect = false;
+            if (!ConnectedPlayers.AddIfNotExists(player)) isReconnect = true;
 
             if (!_firstPlayerConnected)
             {
@@ -137,23 +222,28 @@ namespace PiGSF.Server
                 HandleFirstPlayerConnection();
             }
             player.activeRoom = this;
-            OnPlayerConnected(player, isNew: true);
+            player.rooms = null;
+            messageQueue.Enqueue(new RoomEvent(() => { OnPlayerConnected(player, isNew: !isReconnect); }));
 
             // Check if game should start
-            if (!_isStarted && (!WaitForMinPlayers || ConnectedPlayers.Count >= MinPlayers)) Start();
+            if (!_isStarted && (!WaitForMinPlayers || ConnectedPlayers.Count >= MinPlayers))
+                messageQueue.Enqueue(new RoomEvent(Start));
 
             return true;
-
         }
 
         public void RemovePlayer(Player player)
         {
             ConnectedPlayers.Remove(player);
-            OnPlayerDisconnected(player, disband: true);
+            messageQueue.Enqueue(new RoomEvent(() =>
+            {
+                OnPlayerDisconnected(player, disband: true);
+            }));
 
             // unset the active room if set to this room,
             // the player may still be referenced by other rooms
             if (player.activeRoom == this) player.activeRoom = null;
+            player.rooms = null;
         }
 
         private void HandleFirstPlayerConnection()
@@ -164,7 +254,7 @@ namespace PiGSF.Server
             }
             else if (!WaitForMinPlayers && WaitTime <= 0)
             {
-                Start();
+                messageQueue.Enqueue(new RoomEvent(Start));
             }
         }
 
@@ -180,7 +270,7 @@ namespace PiGSF.Server
                     await Task.Delay(WaitTime * 1000, token);
                     if (!_isStarted)
                     {
-                        Start();
+                        messageQueue.Enqueue(new RoomEvent(Start));
                     }
                 }
                 catch (TaskCanceledException) { }

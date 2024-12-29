@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 using PiGSF.Server;
@@ -85,8 +87,14 @@ namespace Transport
                 player._SendData = (data) => { var m = Message.Create(data); stream.WriteAsync(m, 0, m.Length); };
                 player._CloseConnection = stream.Close;
 
-                var s = $" => Player {player.name} [{player.uid}] connected to room {player.activeRoom.Id}";
-                player.Send([..BitConverter.GetBytes(player.activeRoom.Id), ..Encoding.UTF8.GetBytes(s)]);
+                // Send a message to the player to tell him the room details and room id
+                var m = new MessageBuilder();
+                m.Write(player.activeRoom.Id);
+                m.Write(player.activeRoom.GetType().Name);
+                player.Send(m.ToArray());
+
+                // Start the receiving routine
+                _ = Task.Run(async()=>await ReceiveLoop(client, player));
             }
             catch (Exception ex)
             {
@@ -97,6 +105,39 @@ namespace Transport
                 headerBuffers.Recycle(hdrb);
                 if (packet.HasValue) packet.Value.Dispose();
             }
+        }
+
+        async Task ReceiveLoop(TcpClient client, Player player)
+        {
+            await Task.Yield();
+            var abs = ArrayPool<byte>.Shared;
+            int sz = (int)ServerConfig.HeaderSize;
+            var stream = client.GetStream();
+            while (client.Connected)
+            {
+                var hdrb = abs.Rent(sz);
+                await stream.ReadExactlyAsync(hdrb, 0, sz);
+                int size = sz switch
+                {
+                    1 => hdrb[0],
+                    2 => BitConverter.ToInt16(hdrb),
+                    4 => BitConverter.ToInt32(hdrb),
+                    _ => 0
+                };
+                abs.Return(hdrb);
+                if (size > 0)
+                {
+                    byte[] buffer = new byte[size];
+                    await stream.ReadExactlyAsync(buffer, 0, size);
+                    
+                    // Deliver the message to all rooms where player is connected
+                    var pm = new Room.PlayerMessage { msg = buffer, pl = player };
+                    var rooms = player.rooms;
+                    foreach(var r in rooms) r.messageQueue.Enqueue(pm);
+                }
+
+            }
+            Console.WriteLine("TCPTransport: Task.Run(async Lambda): Client for player " + player.uid + " disconnected");
         }
 
         void OnAccept(IAsyncResult ar)

@@ -12,7 +12,7 @@ namespace Auth
     {
         public async Task<PlayerData> Authenticate(string inputData)
         {
-            return new PlayerData { name = inputData, username = inputData, uid = "anon:" + new Guid() };
+            return new PlayerData { name = inputData, username = inputData, uid = "anon:" + Guid.NewGuid() };
         }
     }
 

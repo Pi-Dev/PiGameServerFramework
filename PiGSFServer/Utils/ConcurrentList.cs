@@ -71,6 +71,15 @@ namespace PiGSF.Utils
             }
         }
 
+        public bool AddIfNotExists(T item)
+        {
+            lock (_lock)
+            {
+                if (_internalList.Contains(item)) return false;
+                _internalList.Add(item); return true;
+            }
+        }
+
         public void Clear()
         {
             lock (_lock)

@@ -18,11 +18,23 @@ namespace PiGSF.Server
         // Caeful with changing this
         public Room activeRoom;
 
+        List<Room>? _rooms = null;
+        public List<Room> rooms
+        {
+            get
+            {
+                if (_rooms == null) _rooms = Room.FindAllWithPlayer(this);
+                return _rooms;
+            }
+            set { _rooms = null; } // any write will invalidate the rooms cache
+        }
+
         // This disbands the player from current active room and joins him to the new room
         public void TransferToRoom(Room? destination)
         {
             if (activeRoom != destination)
             {
+                _rooms = null;
                 activeRoom?.RemovePlayer(this);
                 if (destination != null)
                     destination.AddPlayer(this);
@@ -37,8 +49,11 @@ namespace PiGSF.Server
         // with the player connected to all of them
         public void JoinRoom(Room? destination, bool setActive = true)
         {
+            _rooms = null;
             if (destination != null)
+            {
                 destination.AddPlayer(this);
+            }
             if (setActive) activeRoom = destination;
         }
 
@@ -58,11 +73,20 @@ namespace PiGSF.Server
             _SendData = null;
             _CloseConnection = null;
             isConnected = false;
-            foreach (var r in Room.FindAllWithPlayer(this))
+            var rooms = Room.FindAllWithPlayer(this);
+            foreach (var r in rooms)
             {
-                r.OnPlayerDisconnected(this, disband: false);
-                if (disband) r.RemovePlayer(this);
+                if (disband)
+                {
+                    r.RemovePlayer(this);
+                }
+                else
+                {
+                    Room rm = r;
+                    rm.messageQueue.Enqueue(new Room.RoomEvent(() => { rm.OnPlayerDisconnected(this, false); }));
+                }
             }
+            _rooms = null;
         }
     }
 }
