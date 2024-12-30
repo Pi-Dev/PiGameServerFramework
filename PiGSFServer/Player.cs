@@ -57,8 +57,8 @@ namespace PiGSF.Server
             if (setActive) activeRoom = destination;
         }
 
-        internal bool isConnected = true;
-        public bool IsConnected() => isConnected && _SendData != null;
+        internal volatile int isConnected = 1;
+        public bool IsConnected() => isConnected != 0 && _SendData != null;
 
         public Player(int id)
         {
@@ -67,26 +67,23 @@ namespace PiGSF.Server
 
         public void Send(byte[] data) => _SendData?.Invoke(data);
 
+        /// Thread-safe
         public void Disconnect(bool disband = false)
         {
+            if (Interlocked.Exchange(ref isConnected, 0) == 0)
+                return; // Another also called into Disconnect
+
             _CloseConnection?.Invoke();
             _SendData = null;
             _CloseConnection = null;
-            isConnected = false;
             var rooms = Room.FindAllWithPlayer(this);
             foreach (var r in rooms)
             {
-                if (disband)
-                {
-                    r.RemovePlayer(this);
-                }
-                else
-                {
-                    Room rm = r;
-                    rm.messageQueue.Enqueue(new Room.RoomEvent(() => { rm.OnPlayerDisconnected(this, false); }));
-                }
+                if (disband) r.RemovePlayer(this);
+                else r.messageQueue.Enqueue(new Room.PlayerDisconnect { pl = this, disband = false });
             }
             _rooms = null;
+
         }
     }
 }

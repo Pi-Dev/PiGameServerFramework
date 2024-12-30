@@ -1,4 +1,5 @@
 ﻿using Auth;
+using PiGSF.Utils;
 using System;
 using System.Collections.Concurrent;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Numerics;
 using System.Runtime.Serialization;
+using Terminal.Gui;
 using Transport;
 
 namespace PiGSF.Server
@@ -19,10 +21,10 @@ namespace PiGSF.Server
 
         // Player Database
         ConcurrentDictionary<string, Player> knownPlayersByUid = new();
-        ConcurrentBag<Player> knownPlayers = new();
+        internal ConcurrentList<Player> knownPlayers = new();
         public Player? GetPlayerByUid(string uid) => knownPlayersByUid!.GetValueOrDefault(uid, null) ?? null;
 
-        List<ITransport> transports;
+        ConcurrentList<ITransport> transports;
         public static Room? defaultRoom;
         TcpTransport TCP;
 
@@ -62,18 +64,34 @@ namespace PiGSF.Server
             return ts;
         }
 
+        internal void HandleCommand(string s)
+        {
+            if(s == "stop")
+            {
+                Stop();
+            }
+            else if (s == "keys")
+            {
+                var keys = RSAEncryption.GenerateRSAKeyPairs(512);
+                Console.WriteLine();
+                Console.WriteLine(keys.PrivateKey);
+                Console.WriteLine();
+                Console.WriteLine(keys.PublicKey);
+                Console.WriteLine();
+            }
+        }
 
         public Server(int port)
         {
             this.port = port;
             authenticator = new JWTAuth();
-            
+
             var transports = InitTransports();
             this.transports = new();
             foreach (var t in transports)
             {
                 var transport = Activator.CreateInstance(t) as ITransport;
-                if(transport != null) this.transports.Add(transport);
+                if (transport != null) this.transports.Add(transport);
             }
             InitAuthenticators();
             InitRoomTypes();
@@ -83,16 +101,50 @@ namespace PiGSF.Server
 
         public void Start()
         {
-            foreach (var t in transports)
-            {
-                t!.Init(port, this);
-            }
+            transports.ForEach(x => x.Init(port, this));
         }
 
-        public void Stop()
+        public async void Stop()
         {
-            TCP?.Stop();
-            Console.WriteLine("Server stopped.");
+            // Terminate listeners
+            try
+            {
+                transports.ForEach(x => x.StopAccepting());
+            }
+            catch { }
+
+            // Send ShutdownRequest to all rooms
+            Room.rooms.ForEach(r => r.messageQueue.Enqueue(new Room.RoomEvent(() =>
+            {
+                r.AllowPlayers = false;
+                r.AllowSpectators = false;
+                r.messageQueue.Enqueue(new Room.ShutdownRequest());
+            })));
+
+            Console.WriteLine("Waiting for rooms to complete.");
+
+            // Depending of hosted games, some rooms may need a ton of time to complete, especially if ranked
+            // While I don't believe that this server will be used in a E-Sport someday, 
+            // I better prepare this server for such important use case too
+            // So I will just wait indefinitely until all rooms are stopped, or eligible for stop
+            while (true)
+            {
+                await Task.Delay(500);
+                bool canShutDown = true;
+                Room.rooms.ForEach((r) =>
+                {
+                    if(!r.eligibleForDeletion) canShutDown = false;
+                });
+
+                if (canShutDown)
+                {
+                    Room.rooms.ForEach(r => r.Stop());
+                    while(Room.rooms.Count!=0) await Task.Yield();
+                    break;
+                }
+            }
+            Console.WriteLine("All rooms stopped. SHUTTING DOWN...");
+            Application.RequestStop();
         }
 
         public async Task<Player?> AuthenticatePlayer(string connectionPayload)
@@ -118,69 +170,6 @@ namespace PiGSF.Server
             }
             return player;
         }
-
-
-        //private async void HandleClient(Stream connection)
-        //{
-        //    Player? player = null;
-        //    try
-        //    {
-        //        using var reader = new StreamReader(connection, System.Text.Encoding.UTF8);
-        //        string token = await reader.ReadLineAsync() ?? string.Empty;
-        //
-        //        var playerData = await authenticator.Authenticate(token);
-        //        player = GetPlayerByUid(playerData.uid);
-        //
-        //        if (player == null)
-        //        {
-        //            player = new Player(NextPlayerId++);
-        //            player.uid = playerData.uid;
-        //            player.username = playerData.username;
-        //            player.name = playerData.name;
-        //            knownPlayers.Add(player);
-        //            knownPlayersByUid[playerData.uid] = player;
-        //            player.activeRoom = defaultRoom;
-        //        }
-        //
-        //        //player.connection = connection;
-        //        if (player.activeRoom.AddPlayer(player))
-        //        {
-        //            Console.WriteLine($"Player {player.name} (UID: {player.uid}) connected to room {player.activeRoom.Name}.");
-        //        }
-        //        else
-        //        {
-        //            Console.WriteLine($"Player {player.name} (UID: {player.uid}) was REJECTED from {player.activeRoom.Name}.");
-        //            player.activeRoom = defaultRoom;
-        //        }
-        //
-        //        while (true)
-        //        {
-        //            var message = await reader.ReadLineAsync();
-        //            if (message == null)
-        //            {
-        //                break;
-        //            }
-        //            player.activeRoom.OnMessageReceived(message, player);
-        //        }
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Console.WriteLine($"Error handling client: {ex.Message}");
-        //    }
-        //    finally
-        //    {
-        //        if (connection != null)
-        //        {
-        //            connection.Close();
-        //        }
-        //
-        //        if (player != null)
-        //        {
-        //            player.activeRoom?.RemovePlayer(player);
-        //            Console.WriteLine($"Player {player.name} (UID: {player.uid}) disconnected.");
-        //        }
-        //    }
-        //}
 
     }
 }

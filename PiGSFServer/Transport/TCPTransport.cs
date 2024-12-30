@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -13,7 +14,7 @@ using PiGSF.Utils;
 
 namespace Transport
 {
-    public class TcpTransport: ITransport
+    public class TcpTransport : ITransport
     {
         Server server;
 
@@ -81,7 +82,8 @@ namespace Transport
                 }
 
                 // Player is connected, create the API and give response
-                player._SendData = (data) => { var m = Message.Create(data); stream.WriteAsync(m, 0, m.Length); };
+                var messageQueue = new ConcurrentQueue<byte[]>();
+                player._SendData = (data) => messageQueue.Enqueue(Message.Create(data));
                 player._CloseConnection = stream.Close;
 
                 // Send a message to the player to tell him the room details and room id
@@ -90,9 +92,11 @@ namespace Transport
                 m.Write(player.activeRoom.GetType().Name);
                 player.Send(m.ToArray());
 
-                // Start the receiving routine
-                _ = Task.Run(async()=>await ReceiveLoop(client, player));
+                // Start the I/O routines, 
+                _ = Task.Run(async () => await ReceiveLoop(client, player));
+                _ = Task.Run(async () => await SendLoop(client, player, messageQueue));
             }
+            catch (IOException ex) { }
             catch (Exception ex)
             {
                 client.Close();
@@ -110,38 +114,68 @@ namespace Transport
             var abs = ArrayPool<byte>.Shared;
             int sz = (int)ServerConfig.HeaderSize;
             var stream = client.GetStream();
-            while (client.Connected)
+            try
             {
-                var hdrb = abs.Rent(sz);
-                await stream.ReadExactlyAsync(hdrb, 0, sz);
-                int size = sz switch
+                while (client.Connected)
                 {
-                    1 => hdrb[0],
-                    2 => BitConverter.ToInt16(hdrb),
-                    4 => BitConverter.ToInt32(hdrb),
-                    _ => 0
-                };
-                abs.Return(hdrb);
-                if (size > 0)
-                {
-                    byte[] buffer = new byte[size];
-                    await stream.ReadExactlyAsync(buffer, 0, size);
-                    
-                    // Deliver the message to all rooms where player is connected
-                    var pm = new Room.PlayerMessage { msg = buffer, pl = player };
-                    var rooms = player.rooms;
-                    foreach(var r in rooms) r.messageQueue.Enqueue(pm);
-                }
+                    var hdrb = abs.Rent(sz);
+                    await stream.ReadExactlyAsync(hdrb, 0, sz);
+                    int size = sz switch
+                    {
+                        1 => hdrb[0],
+                        2 => BitConverter.ToInt16(hdrb),
+                        4 => BitConverter.ToInt32(hdrb),
+                        _ => 0
+                    };
+                    abs.Return(hdrb);
+                    if (size > 0)
+                    {
+                        byte[] buffer = new byte[size];
+                        await stream.ReadExactlyAsync(buffer, 0, size);
 
+                        // Deliver the message to all rooms where player is connected
+                        var pm = new Room.PlayerMessage { msg = buffer, pl = player };
+                        var rooms = player.rooms;
+                        foreach (var r in rooms)
+                            r.messageQueue.Enqueue(pm);
+                    }
+
+                }
             }
-            Console.WriteLine("TCPTransport: Task.Run(async Lambda): Client for player " + player.uid + " disconnected");
+            catch (IOException ex) { client.Close(); }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+            //Console.WriteLine("TCPTransport: ReceiveLoop: Client for player " + player.uid + " disconnected");
+            player.Disconnect();
         }
 
+        async Task SendLoop(TcpClient client, Player player, ConcurrentQueue<byte[]> queue)
+        {
+            await Task.Yield();
+            var stream = client.GetStream();
+            try
+            {
+                while (client.Connected)
+                    if (queue.TryDequeue(out var msg))
+                        await stream.WriteAsync(msg);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+            //Console.WriteLine("TCPTransport: SendLoop: Client for player " + player.uid + " disconnected");
+            player.Disconnect();
+        }
+
+        bool stopAccepting = false;
         void OnAccept(IAsyncResult ar)
         {
             try
             {
                 var client = listener!.EndAcceptTcpClient(ar);
+                if (stopAccepting) return; // just kill it
                 OnClientConnected(client);
                 client.NoDelay = true;
             }
@@ -149,7 +183,7 @@ namespace Transport
             {
                 Console.WriteLine($"Error accepting client: {ex.Message}");
             }
-            listener.BeginAcceptTcpClient(OnAccept, null);
+            if (!stopAccepting) listener.BeginAcceptTcpClient(OnAccept, null);
         }
 
         public async Task<Stream> AcceptConnectionAsync()
@@ -179,6 +213,12 @@ namespace Transport
         {
             listener?.Stop();
             Console.WriteLine("TCP Transport stopped.");
+        }
+
+        public void StopAccepting()
+        {
+            stopAccepting = true;
+            listener.Stop();
         }
     }
 }

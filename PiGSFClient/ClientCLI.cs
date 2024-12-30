@@ -20,7 +20,7 @@ namespace PiGSF.Client
 
         static async Task TCPTest()
         {
-            string playerData = "Username";
+            string playerData = "Pesho";
 
             var client = new Client();
             Console.WriteLine($"Connecting to {ClientConfig.serverAddress}:{ClientConfig.serverPort}...");
