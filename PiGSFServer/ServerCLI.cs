@@ -1,5 +1,5 @@
 ﻿using Auth;
-using PiGSFServer.TUI;
+using PiGSF.Server.TUI;
 using System;
 using Terminal.Gui;
 

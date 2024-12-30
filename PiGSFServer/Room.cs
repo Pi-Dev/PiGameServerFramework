@@ -28,12 +28,12 @@ namespace PiGSF.Server
             {
                 if (_tickRate == value) return;
                 cts?.Cancel();
-                Console.WriteLine("Tickrate change for room " + Id + " requested");
+                Log.Write("Tickrate change for room " + Id + " requested");
                 if (_tickRate > 0)
                 {
                     messageQueue.Enqueue(new RoomEvent(() =>
                     {
-                        Console.WriteLine($"Tickrate for room {Id}: set to {value}");
+                        Log.Write($"Tickrate for room {Id}: set to {value}");
                         cts = new CancellationTokenSource();
                         _ = UpdateLoop(cts.Token);
                     }));
@@ -55,6 +55,15 @@ namespace PiGSF.Server
         // Connected players and banned players
         protected ConcurrentList<Player> ConnectedPlayers = new();
         protected ConcurrentBag<string> BannedPlayerUids = new();
+        public (int connected, int total) GetPlayersData()
+        {
+            lock(ConnectedPlayers)
+            {
+                int connected = 0;
+                foreach (Player player in ConnectedPlayers) if (player.IsConnected()) connected++;
+                return (connected, ConnectedPlayers.Count);
+            }
+        }
 
         // Player Messages & Room Message Queue
         internal class IRoomEvent { };
@@ -96,7 +105,7 @@ namespace PiGSF.Server
                         else if (item is RoomEvent re)
                         {
                             try { re.func(); }
-                            catch (Exception e) { Console.WriteLine(e); }
+                            catch (Exception e) { Console.WriteLine(e); Log.Write(e.ToString()); }
                         }
                         else if (item is PlayerDisconnect pd)
                             OnPlayerDisconnected(pd.pl, pd.disband);
@@ -119,10 +128,14 @@ namespace PiGSF.Server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"ROOM {Id}: {GetType().Name} ENCOUNTERED ERROR:\n"+e.ToString());
+                string message = $"ROOM {Id}: {GetType().Name} ENCOUNTERED ERROR:\n" + e.ToString();
+                Console.WriteLine(message);
+                Log.Write(message);
                 if(Server.defaultRoom == this)
                 {
-                    Console.WriteLine("CRITICAL! DEFAULT LOBBY CRASHED!");
+                    message = "CRITICAL! THE DEFAULT ROOM CRASHED!";
+                    Console.WriteLine(message);
+                    Log.Write(message);
                     Server.defaultRoom = ServerConfig.defaultRoom;
                 }
                 Dispose();
@@ -151,7 +164,7 @@ namespace PiGSF.Server
             }
         }
 
-        public RoomLogger Log = new();
+        public RoomLogger Log;
 
         // Constructor
         protected Room(string name = "")
@@ -159,6 +172,7 @@ namespace PiGSF.Server
             // Init room, create unique id
             Id = NextRoomId++;
             Name = name;
+            Log = new RoomLogger(this);
 
             // Register rooms with the server
             rooms.Add(this);
@@ -249,22 +263,22 @@ namespace PiGSF.Server
         {
             if (BannedPlayerUids.Contains(player.uid))
             {
-                Log.WriteLine($"Player {player.name} is banned from Room {Name}.");
+                Log.Write($"Player {player.name} is banned from Room {Name}.");
                 return false;
             }
             if (!AllowPlayers && !ConnectedPlayers.Contains(player))
             {
-                Log.WriteLine($"Room {Name} is not accepting new players.");
+                Log.Write($"Room {Name} is not accepting new players.");
                 return false;
             }
             if (ConnectedPlayers.Count >= MaxPlayers)
             {
-                Log.WriteLine($"Room {Name} is full. Player {player.name} cannot join.");
+                Log.Write($"Room {Name} is full. Player {player.name} cannot join.");
                 return false;
             }
             if (!AllowSpectators && player.isSpectator)
             {
-                Log.WriteLine($"Player {player.name} is a spectator, but spectators are not allowed in Room {Name}.");
+                Log.Write($"Player {player.name} is a spectator, but spectators are not allowed in Room {Name}.");
                 return false;
             }
 
@@ -365,10 +379,16 @@ namespace PiGSF.Server
         {
             if (!disposedValue)
             {
+                // Remove this room from all referenced player
                 ConnectedPlayers.ForEach(p => { 
                     p.rooms.Remove(this);
                     if (p.activeRoom == this) p.activeRoom = null;
-                    if (p.rooms.Count == 0 && p.activeRoom == null) p.Disconnect(); 
+                    if (p.rooms.Count == 0 && p.activeRoom == null)
+                    {
+                        if(Server.defaultRoom == null)
+                            p.Disconnect();
+                        else p.JoinRoom(Server.defaultRoom, true);
+                    }
                 });
                 if (disposing)
                 {

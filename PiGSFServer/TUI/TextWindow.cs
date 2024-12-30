@@ -29,9 +29,8 @@ public class TextWindow : Window
             Height = Dim.Fill(),
             ReadOnly = true,
             WordWrap = false,
-            ColorScheme = new ColorScheme(new Attribute(Color.White, 0x444444))
+            ColorScheme = new ColorScheme(new Attribute(Color.White, 0x444444)),
         };
-
 
         Add(_textView);
 

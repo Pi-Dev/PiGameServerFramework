@@ -66,7 +66,7 @@ namespace PiGSF.Server
 
         internal void HandleCommand(string s)
         {
-            if(s == "stop")
+            if (s == "stop")
             {
                 Stop();
             }
@@ -133,13 +133,13 @@ namespace PiGSF.Server
                 bool canShutDown = true;
                 Room.rooms.ForEach((r) =>
                 {
-                    if(!r.eligibleForDeletion) canShutDown = false;
+                    if (!r.eligibleForDeletion) canShutDown = false;
                 });
 
                 if (canShutDown)
                 {
                     Room.rooms.ForEach(r => r.Stop());
-                    while(Room.rooms.Count!=0) await Task.Yield();
+                    while (Room.rooms.Count != 0) await Task.Yield();
                     break;
                 }
             }

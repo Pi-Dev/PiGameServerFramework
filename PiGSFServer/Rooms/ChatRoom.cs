@@ -11,15 +11,15 @@ namespace PiGSF.Rooms
     {
         public ChatRoom(string name = "") : base(name)
         {
-            Log.WriteLine("BEGIN");
+            Log.Write("BEGIN");
             for (int i = 0; i < 100; i++)
-                Log.WriteLine("_textView.MoveEnd(); // Scroll to the end");
-            Log.WriteLine("END");
+                Log.Write("_textView.MoveEnd(); // Scroll to the end");
+            Log.Write("END");
         }
 
         protected override void Start()
         {
-            Log.WriteLine($"ChatRoom {Name} started.");
+            Log.Write($"ChatRoom {Name} started.");
         }
 
         protected override void OnPlayerConnected(Player player, bool isNew)
@@ -30,7 +30,7 @@ namespace PiGSF.Rooms
         protected override void OnPlayerDisconnected(Player player, bool disband)
         {
             string end = disband ? "left the room": "lost connection";
-            Log.WriteLine($"[{player.name} {end}]");
+            Log.Write($"[{player.name} {end}]");
             if(disband) BroadcastMessage(Message.Create($"{player.name} has left the chat."), null);
             RemovePlayer(player);
         }
@@ -39,16 +39,15 @@ namespace PiGSF.Rooms
         {
             var text = Encoding.UTF8.GetString(message);
             if (text.StartsWith("crash")) throw new Exception("Debugging error");
-            Log.WriteLine($"[{Name}] {sender.name}: {text}");
+            Log.Write($"[{Name}] {sender.name}: {text}");
             BroadcastMessage(Message.Create($"{sender.name}: {text}"), sender);
         }
 
         protected override void OnShutdownRequested()
         {
             base.OnShutdownRequested();
-            Log.WriteLine("ChatRoom.OnShutdownRequested()");
-            Thread.Sleep(5000);
-            Log.WriteLine("Marking as eligibleForDeletion");
+            Log.Write("ChatRoom.OnShutdownRequested()");
+            Log.Write("Marking as eligibleForDeletion");
             eligibleForDeletion = true; // room will continue to run, but server is allowed to terminate it
         }
     }

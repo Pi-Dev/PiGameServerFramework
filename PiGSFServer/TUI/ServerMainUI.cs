@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Terminal.Gui;
 using Attribute = Terminal.Gui.Attribute;
 
-namespace PiGSFServer.TUI
+namespace PiGSF.Server.TUI
 {
     internal class ServerMainUI : Toplevel
     {
@@ -37,12 +37,7 @@ namespace PiGSFServer.TUI
                 }),
                 new MenuBarItem("_Rooms", new MenuItem[]
                 {
-                    new MenuItem("_List", "", () => {
-                        string str = "";
-                        Room.rooms.ForEach(r => str += r.Id.ToString().PadRight(6) + " | " + r.GetType().Name + "  [" + r.Name + "]\n");
-                        var tx = new TextWindow($" Rooms list ", str);
-                        Add(tx);
-                    })
+                    new MenuItem("_List", "", () => HandleUICommand("rooms"))
                 }),
                 new MenuBarItem("_Players", new MenuItem[]
                 {
@@ -103,27 +98,12 @@ namespace PiGSFServer.TUI
                 if (e.KeyCode == KeyCode.Enter)
                 {
                     var command = _commandTextField.Text;
-                    Console.WriteLine(command);
-                    server.HandleCommand(command);
-                    _commandTextField.Text = ""; // Clear the field
                     e.Handled = true; // Suppress default Enter behavior
-
-                    if (command.StartsWith("room"))
-                    {
-                        var parts = command.Split(' ');
-                        var rid = parts[1];
-                        try
-                        {
-                            var room = Room.GetById(int.Parse(rid));
-                            if (room.Log.logWindow != null) room.Log.logWindow.SetFocus();
-                            else
-                            {
-                                var lw = new LogWindow($"Room {rid} = {room.Name} :: |{room.GetType().Name}", room);
-                                Add(lw);
-                            }
-                        }
-                        catch { }
-                    }
+                    _commandTextField.Text = ""; // Clear the field
+                    
+                    Console.WriteLine("> " + command);
+                    HandleUICommand(command);
+                    server.HandleCommand(command);
                 }
             };
 
@@ -131,9 +111,9 @@ namespace PiGSFServer.TUI
             // Create a StatusBar
             rooms = new Shortcut(null, $"Rooms:  0", ShowRooms)
             {
-                ColorScheme = new ColorScheme(new Attribute(Color.Yellow, Color.Red))
+                // ColorScheme = new ColorScheme(new Attribute(Color.Yellow, Color.Red))
             };
-            players = new Shortcut(null, $"Players:  0/0", ShowPlayers);
+            players = new Shortcut(null, $"Players:  0/0", null);
             status = new Shortcut(null, "", null);
             _statusBar = new StatusBar(new[]
             {
@@ -148,21 +128,58 @@ namespace PiGSFServer.TUI
             Add(_statusBar);
 
             // Status bar routine
-            _ = Task.Run(async () =>
-            {
-                while (!statusRoutine.IsCancellationRequested)
-                {
-                    //Console.WriteLine("statusRoutine");
-                    var rc = Room.rooms.Count;
-                    int pc = 0, ac = server != null ? server.knownPlayers.Count() : 0;
-                    if (server != null) server.knownPlayers.ForEach(p => { if (p.IsConnected()) pc++; });
-                    SetRoomCount(rc);
-                    SetPlayerCount(pc, ac);
+            StatusLoop();
+        }
 
-                    await Task.Delay(1);
-                    //await Task.Delay(500); CAUSE RACE CONDITIONS
+        async void StatusLoop()
+        {
+            while (!statusRoutine.IsCancellationRequested)
+            {
+                var rc = Room.rooms.Count;
+                int pc = 0, ac = server != null ? server.knownPlayers.Count() : 0;
+                if (server != null) server.knownPlayers.ForEach(p => { if (p.IsConnected()) pc++; });
+                SetRoomCount(rc);
+                SetPlayerCount(pc, ac);
+
+                foreach (var h in this.Subviews.Where(h => h is RoomList))
+                    (h as RoomList).UpdateRooms();
+
+                await Task.Delay(500); 
+
+                // To CAUSE RACE CONDITIONS
+                // await Task.Yield();
+                // Console.WriteLine("statusRoutine");
+            }
+        }
+
+        public async void HandleUICommand(string command)
+        {
+            if(command == "rooms")
+            {
+                var tx = new RoomList(server);
+                Add(tx);
+            }
+            if (command.StartsWith("room "))
+            {
+                var parts = command.Split(' ');
+                var rid = parts[1];
+                try
+                {
+                    var room = Room.GetById(int.Parse(rid));
+                    if (room == null) return;
+                    if (room.Log.logWindow != null) room.Log.logWindow.SetFocus();
+                    else
+                    {
+                        var lw = new LogWindow($"Room {rid} = {room.Name} :: |{room.GetType().Name}", room);
+                        Application.Top.Add(lw);
+                        await Task.Yield();
+                        lw.SetFocus();
+                    }
                 }
-            });
+                catch { }
+                return;
+            }
+            return;
         }
 
         public void ShowPlayers() { }

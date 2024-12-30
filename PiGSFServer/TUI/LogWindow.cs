@@ -30,10 +30,10 @@ public class LogWindow : Window
             Width = Dim.Fill(),
             Height = Dim.Fill(),
             ReadOnly = true,
-            WordWrap = false,
-            ColorScheme = new ColorScheme(new Attribute(Color.White, 0x444444))
+            WordWrap = true,
+            ColorScheme = new ColorScheme(new Attribute(Color.White, 0x444444)),
         };
-
+        _textView.VerticalScrollBar.Visible = true;
 
         Add(_textView);
 
