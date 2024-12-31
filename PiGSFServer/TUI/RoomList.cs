@@ -16,14 +16,14 @@ public class RoomList : Window
         main = Application.Top as ServerMainUI;
         ++numTextWindows;
         // Window
-        Title = "Room List";
-        ColorScheme = new ColorScheme(new Attribute(Color.White, Color.DarkGray));
+        Title = "> Room List ";
+        ColorScheme = new ColorScheme(new Attribute(Color.White, 0x333333));
         X = 15 + numTextWindows;
         Y = numTextWindows;
         Width = Dim.Fill() - 10;
         Height = Dim.Fill() - 6;
-        //BorderStyle = LineStyle.Double;
-        ShadowStyle = ShadowStyle.Transparent;
+        BorderStyle = LineStyle.Double;
+        //ShadowStyle = ShadowStyle.Transparent;
 
         VerticalScrollBar.Visible = true;
 
@@ -58,11 +58,11 @@ public class RoomList : Window
             {
                 button = new Button()
                 {
-                    X = 0,
+                    X = -1,
                     Y = i,
                     Width = Dim.Fill(),
                     Height = 1,
-                    Text = "Unloaded",
+                    Text = "- Unloaded",
                     ColorScheme = new ColorScheme(new Attribute(Color.White, 0x444444)),
                     BorderStyle = LineStyle.None,
                     ShadowStyle = ShadowStyle.None,
@@ -71,7 +71,7 @@ public class RoomList : Window
                 };
                 button.Accepting += (s, e) =>
                 {
-                    main.HandleUICommand("room " + button.Text.Split("|")[0].Trim());
+                    main.HandleUICommand("room " + button.Text.Substring(1).Split("|")[0].Trim());
                 };
                 buttons[i] = button;
             }
@@ -81,7 +81,7 @@ public class RoomList : Window
             var pd = r.GetPlayersData(); // thread-safe call
             bool isStarted = r.IsStarted;
             button.ColorScheme = new ColorScheme(new Attribute(isStarted ? 0x00ff00 : Color.White, 0x444444));
-            button.Text =
+            button.Text = "> " +
                 /* Status, Id  */ r.Id.ToString().PadRight(5) + "| " +
                 /*current/total*/ (pd.connected + "/" + pd.total).PadRight(7) + " | " +
                 r.GetType().Name.PadRight(16) + " | "+

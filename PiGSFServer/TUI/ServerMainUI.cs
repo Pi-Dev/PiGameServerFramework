@@ -126,7 +126,7 @@ namespace PiGSF.Server.TUI
             Add(_statusBar);
 
             // Status bar routine
-            // StatusLoop();
+            StatusLoop();
         }
 
         async void StatusLoop()
@@ -168,7 +168,7 @@ namespace PiGSF.Server.TUI
                     if (room.Log.logWindow != null) room.Log.logWindow.SetFocus();
                     else
                     {
-                        var lw = new LogWindow($"Room {rid} = {room.Name} :: |{room.GetType().Name}", room);
+                        var lw = new LogWindow($"> Room {rid} = {room.Name} :: | {room.GetType().Name} ", room);
                         Application.Top.Add(lw);
                         await Task.Yield();
                         lw.SetFocus();

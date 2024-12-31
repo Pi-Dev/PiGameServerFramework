@@ -13,7 +13,12 @@ namespace PiGSF.Server
 
             ConfigurationManager.RuntimeConfig = """{ "Theme": "Dark" }""";
             Application.Init(null, "NetDriver");
+            
+            // Setup GUI overrides
             MessageBox.DefaultBorderStyle = LineStyle.Double;
+            Dialog.DefaultBorderStyle = LineStyle.Single;
+            Dialog.DefaultShadow = ShadowStyle.Transparent;
+
             Application.KeyBindings.Clear(Command.Quit);
             var ui = new ServerMainUI();
 

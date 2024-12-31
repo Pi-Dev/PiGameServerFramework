@@ -53,7 +53,7 @@ public static class ServerLogger
             File.AppendAllText(_logFilePath, logEntry + Environment.NewLine);
 
             // Update the log window, if any
-            logWindow?.RefreshLogs();
+            //logWindow?.RefreshLogs();
         }
     }
 }

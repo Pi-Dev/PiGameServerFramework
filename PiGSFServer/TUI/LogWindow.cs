@@ -8,6 +8,7 @@ public class LogWindow : Window
     private readonly RoomLogger _logger;
 
     static int numLogs = 0;
+    CancellationTokenSource updateLoopCancel = new();
     public LogWindow(string title, PiGSF.Server.Room room)
     {
         ++numLogs;
@@ -15,11 +16,11 @@ public class LogWindow : Window
         Title = title;
         _logger = room.Log;
         ColorScheme = new ColorScheme(new Attribute(Color.White, Color.DarkGray));
-        X = 6+numLogs;
+        X = 6 + numLogs;
         Y = numLogs;
         Width = Dim.Fill() - 6;
         Height = Dim.Fill() - 6;
-        BorderStyle = LineStyle.Heavy;
+        BorderStyle = LineStyle.Double;
         ShadowStyle = ShadowStyle.None;
 
         // Textview
@@ -45,21 +46,36 @@ public class LogWindow : Window
             {
                 --numLogs;
                 room.Log.logWindow = null;
+                updateLoopCancel.Cancel();
                 Application.Top.Remove(this);
                 Dispose();
             };
         };
-
+        shouldRefreshLogs = true;
         postInit();
     }
 
     async void postInit()
     {
-        await Task.Yield();
-        RefreshLogs();
+        while (!updateLoopCancel.IsCancellationRequested)
+        {
+            await Task.Yield();
+            if (shouldRefreshLogs)
+            {
+                shouldRefreshLogs = false;
+                RefreshLogsImpl();
+            }
+        }
     }
 
+    volatile bool shouldRefreshLogs = false;
+
     public void RefreshLogs()
+    {
+        shouldRefreshLogs = true;
+    }
+
+    public void RefreshLogsImpl()
     {
         var logs = _logger.messages;
         _textView.Text = string.Join("\n", logs);
