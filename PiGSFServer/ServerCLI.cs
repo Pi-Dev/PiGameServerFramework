@@ -12,7 +12,7 @@ namespace PiGSF.Server
             //Console.SetOut(new ConsoleWriteHandler());
 
             ConfigurationManager.RuntimeConfig = """{ "Theme": "Dark" }""";
-            Application.Init(null, "NetDriver");
+            //Application.Init(null, "NetDriver");
             
             // Setup GUI overrides
             MessageBox.DefaultBorderStyle = LineStyle.Double;
@@ -20,20 +20,20 @@ namespace PiGSF.Server
             Dialog.DefaultShadow = ShadowStyle.Transparent;
 
             Application.KeyBindings.Clear(Command.Quit);
-            var ui = new ServerMainUI();
+            //var ui = new ServerMainUI();
 
             var t = new Thread(() => {
                 ServerLogger.Log("Pi Game Server Framework by Pi-Dev");
                 int port = int.Parse(ServerConfig.Get("bindPort"));
                 var server = new Server(port);
-                ui.server = server;
+                //ui.server = server;
                 server.Start();
             });
             t.Name = "ServerThread";
             t.Start();
   
-            Application.Run(ui);
-            ui.Dispose();
+            //Application.Run(ui);
+            //ui.Dispose();
         }
     }
 }

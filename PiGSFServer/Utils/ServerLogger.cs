@@ -54,6 +54,7 @@ public static class ServerLogger
 
             // Update the log window, if any
             //logWindow?.RefreshLogs();
+            Console.WriteLine(logEntry);
         }
     }
 }

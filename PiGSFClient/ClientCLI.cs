@@ -14,16 +14,21 @@ namespace PiGSF.Client
     {
         public static async Task<int> Main(string[] args)
         {
-            await TCPTest();
+            for(int i = 0; i < 10; i++)
+            {
+                TCPTest("User "+i);
+            }
+
+            await Task.Delay(60 * 1000 * 10);
             return 0;
         }
 
-        static async Task TCPTest()
+        static async Task TCPTest(string username)
         {
-            string playerData = "Pesho";
+            string playerData = username;
 
+            Console.WriteLine($"[{username}] Connecting to {ClientConfig.serverAddress}:{ClientConfig.serverPort}...");
             var client = new Client();
-            Console.WriteLine($"Connecting to {ClientConfig.serverAddress}:{ClientConfig.serverPort}...");
             try
             {
                 await client.Connect(ClientConfig.serverAddress + ":" + ClientConfig.serverPort);
@@ -49,6 +54,7 @@ namespace PiGSF.Client
                 {
                     var m = client.GetMessage();
                     if (m != null) Console.WriteLine("Message: " + Encoding.UTF8.GetString(m));
+                    if(m==null) Thread.Sleep(16);
                 }
             });
             mpt.Start();
@@ -56,13 +62,9 @@ namespace PiGSF.Client
             // Start main client loop
             while (true)
             {
-                string? input = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(input)) continue;
-                else
-                {
-                    client.SendString(input);
-                }
-
+                Thread.Sleep(5000);
+                string? input = username + " is calling?";
+                client.SendString(input);
             }
         }
     }

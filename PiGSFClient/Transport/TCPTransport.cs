@@ -61,6 +61,7 @@ namespace PiGSFClient.Transport
                             client.messages.Enqueue(buffer);
                         }
                     }
+                    Thread.Sleep(1);
                 }
                 catch (Exception ex)
                 {
