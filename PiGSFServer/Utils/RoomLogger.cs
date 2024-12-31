@@ -1,9 +1,10 @@
 ﻿using PiGSF.Server;
+using System.Collections.Concurrent;
 
 public class RoomLogger
 {
     private readonly Room _room;
-    internal readonly List<string> messages = new();
+    internal readonly ConcurrentQueue<string> messages = new();
     private const int maxLogLines = 1000;
     private readonly string _logFilePath;
     internal LogWindow? logWindow;
@@ -25,21 +26,16 @@ public class RoomLogger
 
     public void Write(string message)
     {
+        string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {message}";
         lock (messages)
         {
-            // Add timestamped log entry
-            string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {message}";
-            messages.Add(logEntry);
-
-            // Remove oldest logs if exceeding the limit
-            if (messages.Count > maxLogLines)
-                messages.RemoveAt(0);
-
-            // Write to the log file
-            File.AppendAllText(_logFilePath, logEntry + Environment.NewLine);
-
-            // Update the log window, if any
-            logWindow?.RefreshLogs();
+            messages.Enqueue(logEntry);
         }
+
+        // Write to the log file
+        //File.AppendAllText(_logFilePath, logEntry + Environment.NewLine);
+
+        // Update the log window, if any
+        //logWindow?.RefreshLogs();
     }
 }

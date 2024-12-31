@@ -1,7 +1,8 @@
 ﻿using PiGSF.Server;
+using System.Collections.Concurrent;
 using System.Text;
 
-public class ConsoleWriteHandler: TextWriter
+public class ConsoleWriteHandler : TextWriter
 {
     public override Encoding Encoding => Encoding.UTF8;
 
@@ -19,7 +20,8 @@ public class ConsoleWriteHandler: TextWriter
 
 public static class ServerLogger
 {
-    internal static readonly List<string> messages = new();
+    internal static readonly ConcurrentQueue<string> messages = new();
+
     private const int maxLogLines = 1000;
     private static readonly string _logFilePath;
     internal static ServerLogView? logWindow;
@@ -39,22 +41,17 @@ public static class ServerLogger
 
     public static void Log(string message)
     {
+        string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}│ {message}";
         lock (messages)
         {
-            // Add timestamped log entry
-            string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}│ {message}";
-            messages.Add(logEntry);
-
-            // Remove oldest logs if exceeding the limit
-            if (messages.Count > maxLogLines)
-                messages.RemoveAt(0);
-
-            // Write to the log file
-            File.AppendAllText(_logFilePath, logEntry + Environment.NewLine);
-
-            // Update the log window, if any
-            //logWindow?.RefreshLogs();
-            Console.WriteLine(logEntry);
+            messages.Enqueue(logEntry);
         }
+        // Write to the log file
+        //File.AppendAllText(_logFilePath, logEntry + Environment.NewLine);
+
+        // Update the log window, if any
+        //logWindow?.RefreshLogs();
+        Console.WriteLine(logEntry);
+
     }
 }

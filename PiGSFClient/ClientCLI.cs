@@ -32,7 +32,7 @@ namespace PiGSF.Client
             try
             {
                 await client.Connect(ClientConfig.serverAddress + ":" + ClientConfig.serverPort);
-                Console.WriteLine($"Connected");
+                Console.WriteLine($"[{username}] Connected");
 
             }
             catch (Exception ex)
