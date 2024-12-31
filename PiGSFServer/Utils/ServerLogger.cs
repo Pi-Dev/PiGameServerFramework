@@ -42,10 +42,10 @@ public static class ServerLogger
     public static void Log(string message)
     {
         string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}│ {message}";
-        lock (messages)
-        {
-            messages.Enqueue(logEntry);
-        }
+        //lock (messages)
+        //{
+        //    messages.Enqueue(logEntry);
+        //}
         // Write to the log file
         //File.AppendAllText(_logFilePath, logEntry + Environment.NewLine);
 

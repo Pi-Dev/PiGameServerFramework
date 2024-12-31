@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,6 +9,7 @@ namespace PiGSF.Utils
 {
     // Written by PeterSvP, originally for his game ColorBlend FX: Desaturation
     // commented out the reinit feature
+    // Modified to be thread-safe
     public class ObjectPooler<T>
     {
         public ObjectPooler() { }
@@ -25,7 +27,7 @@ namespace PiGSF.Utils
         public ObjectDestroyFunc? funcDestroy;
 
         // The Stack pool of objects
-        public Stack<T> objects = new Stack<T>();
+        public ConcurrentStack<T> objects = new ConcurrentStack<T>();
 
         // Recycle object, so it's ready for reusing
         public void Recycle(T obj)
@@ -37,15 +39,9 @@ namespace PiGSF.Utils
         // Get a new object from the pooler
         public T Buy()
         {
-            if (objects.Count == 0)
-            {
-                if (funcGenerate != null) return funcGenerate();
-                else return default;
-            }
-
-            T obj = objects.Pop();
-            //if (funcReinit != null) funcReinit(obj);
-            return obj;
+            if (objects.TryPop(out var obj)) return obj;
+            else if (funcGenerate != null) return funcGenerate();
+            else return default;
         }
 
         // Fill the pooler with objects
@@ -64,9 +60,13 @@ namespace PiGSF.Utils
         public void Clear(bool destroy = true)
         {
             if (destroy && funcDestroy != null)
-                foreach (var o in objects)
+            {
+                var all = objects.ToArray();
+                objects.Clear();
+                foreach (var o in all)
                     funcDestroy(o);
-            objects.Clear();
+            }
+            else objects.Clear();
         }
     }
 

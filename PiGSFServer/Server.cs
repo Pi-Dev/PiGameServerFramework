@@ -150,7 +150,7 @@ namespace PiGSF.Server
         public async Task<Player?> AuthenticatePlayer(string connectionPayload)
         {
             PlayerData? pd = null;
-            foreach (var a in ServerConfig.authProviders)
+            foreach (var a in ServerConfig.authProviders) // concurrent reading!
             {
                 pd = await a.Authenticate(connectionPayload);
                 if (pd != null) break;

@@ -27,57 +27,71 @@ namespace Transport
         {
             this.server = serverRef;
             listener = new TcpListener(IPAddress.Any, port);
-            listener.Start(100);
+            listener.Start(5000);
             ServerLogger.Log($"Server started on {port}");
-            listener.BeginAcceptTcpClient(OnAccept, null);
+            listener.BeginAcceptTcpClient(OnAcceptConcurrent, null);
         }
 
-        (byte[] bytes, Action Dispose) GetPacketBuffer(int size)
+        void OnAcceptConcurrent(IAsyncResult ar)
         {
-            if (size <= ServerConfig.PolledBuffersSize)
+            TcpClient client = null;
+            try
             {
-                var buffer = messageBuffers.Buy();
-                return (buffer, () => messageBuffers.Recycle(buffer));
+                client = listener!.EndAcceptTcpClient(ar);
             }
-            else
-            {
-                var buffer = new byte[size];
-                return (buffer, () => { });
-            }
+            catch { };
+            if (!stopAccepting) listener.BeginAcceptTcpClient(OnAcceptConcurrent, null);
+            else return;
+
+            if (client != null)
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        OnClientConnected(client);
+                    }
+                    catch (Exception ex)
+                    {
+                        ServerLogger.Log($"OnAcceptConcurrent: Error accepting client: {ex.Message}");
+                    }
+                });
         }
 
-        // Handles client connection and authentication
-        async void OnClientConnected(TcpClient client)
+        // Thread: Started from OnAcceptConcurrent
+        int call = 0;
+        void OnClientConnected(TcpClient client)
         {
+            call++;
+            if (call % 10 == 0) ServerLogger.Log($"[{call}] OnClientConnected");
+
+            client.NoDelay = true;
             var hdrb = headerBuffers.Buy();
             (byte[] bytes, Action Dispose)? packet = null;
             string data = string.Empty;
             try
             {
                 var stream = client.GetStream();
-                client.NoDelay = true;
-                await stream.ReadExactlyAsync(hdrb, 0, (int)ServerConfig.HeaderSize);
+                stream.ReadExactly(hdrb, 0, (int)ServerConfig.HeaderSize);
                 int size = BitConverter.ToInt16(hdrb, 0);
 
                 // Avoid DDOS attackers, limit first pack to small size
                 if (size < 0 || size > ServerConfig.MaxInitialPacketSize)
                 {
-                    ServerLogger.Log("ERROR: Client sending negative or too big header. Disconnecting");
+                    if (call % 10 == 0) ServerLogger.Log($"[{call}] ERROR: Client sending negative or too big header. Disconnecting");
                     client.Close(); return;
                 }
 
                 packet = GetPacketBuffer(size);
-                await stream.ReadExactlyAsync(packet.Value.bytes, 0, size);
+                stream.ReadExactly(packet.Value.bytes, 0, size);
 
                 data = Encoding.UTF8.GetString(packet.Value.bytes, 0, size);
                 packet.Value.Dispose();
                 packet = null;
-
-                ServerLogger.Log($"New client connected: {data}");
-                var player = await server.AuthenticatePlayer(data);
+                if (call % 10 == 0) ServerLogger.Log($"[{call}] Client Data: {data}");
+                var player = server.AuthenticatePlayer(data).GetAwaiter().GetResult();
                 if (player == null)
                 {
-                    ServerLogger.Log("ERROR: Client Unauthorized");
+                    if (call % 10 == 0) ServerLogger.Log($"[{call}] ERROR: Client Unauthorized");
                     client.Close(); return;
                 }
 
@@ -92,9 +106,18 @@ namespace Transport
                 m.Write(player.activeRoom.GetType().Name);
                 player.Send(m.ToArray());
 
-                // Start the I/O routines, 
-                _ = Task.Run(async () => await ReceiveLoop(client, player));
-                _ = Task.Run(async () => await SendLoop(client, player, messageQueue));
+                // Experiment 1: 
+                if (call % 10 == 0) ServerLogger.Log($"[{call}] EXPERIMENT 1 START");
+                var sender = SendLoop(client, player, messageQueue);
+                var receiver = ReceiveLoop(client, player);
+                if (call % 10 == 0) ServerLogger.Log($"[{call}] EXPERIMENT 1 ENDED");
+
+                // Start the I/O routines as 2 separate threads
+                //if (call % 10 == 0) ServerLogger.Log($"[{call}] Starting I/O threads");
+                //var t = new Thread(()=>SendLoop(client, player, messageQueue));
+                //t.Name = $"Client {call}: SendLoop";
+                //Thread.CurrentThread.Name = $"Client {call}: ReceiveLoop [repurposed]";
+                //ReceiveLoop(client, player);
             }
             catch (IOException ex) { }
             catch (Exception ex)
@@ -169,6 +192,21 @@ namespace Transport
             player.Disconnect();
         }
 
+        (byte[] bytes, Action Dispose) GetPacketBuffer(int size)
+        {
+            if (size <= ServerConfig.PolledBuffersSize)
+            {
+                var buffer = messageBuffers.Buy();
+                return (buffer, () => messageBuffers.Recycle(buffer));
+            }
+            else
+            {
+                var buffer = new byte[size];
+                return (buffer, () => { });
+            }
+        }
+
+
         bool stopAccepting = false;
         void OnAccept(IAsyncResult ar)
         {
@@ -184,17 +222,6 @@ namespace Transport
                 ServerLogger.Log($"Error accepting client: {ex.Message}");
             }
             if (!stopAccepting) listener.BeginAcceptTcpClient(OnAccept, null);
-        }
-
-        public async Task<Stream> AcceptConnectionAsync()
-        {
-            if (listener == null)
-            {
-                throw new InvalidOperationException("Listener is not started.");
-            }
-
-            TcpClient client = await listener.AcceptTcpClientAsync();
-            return client.GetStream();
         }
 
         public static async Task SendAsync(Stream connection, byte[] data)
