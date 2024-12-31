@@ -11,28 +11,23 @@ namespace PiGSF.Rooms
     {
         public ChatRoom(string name = "") : base(name)
         {
-            Log.Write("BEGIN");
-            for (int i = 0; i < 100; i++)
-                Log.Write("_textView.MoveEnd(); // Scroll to the end");
-            Log.Write("END");
-        }
-
-        protected override void Start()
-        {
-            Log.Write($"ChatRoom {Name} started.");
+            MaxPlayers = int.MaxValue;
+            MinPlayers = 0;
+            WaitTime = 0;
+            Log.Write($"ChatRoom {Name} created.");
         }
 
         protected override void OnPlayerConnected(Player player, bool isNew)
         {
-            BroadcastMessage(Message.Create($"{player.name} has joined the chat."), null);
+            BroadcastMessage(Message.Create($"{player.name} has joined."), null);
         }
 
         protected override void OnPlayerDisconnected(Player player, bool disband)
         {
             string end = disband ? "left the room": "lost connection";
             Log.Write($"[{player.name} {end}]");
-            if(disband) BroadcastMessage(Message.Create($"{player.name} has left the chat."), null);
-            RemovePlayer(player);
+            if(disband) BroadcastMessage(Message.Create($"{player.name} has left."), null);
+            RemovePlayer(player); // Chatrooms just forget players
         }
 
         protected override void OnMessageReceived(byte[] message, Player sender)

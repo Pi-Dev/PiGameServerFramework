@@ -32,7 +32,7 @@ public static class TypeLoader
                 // Log loader exceptions if any
                 foreach (var loaderException in ex.LoaderExceptions)
                 {
-                    Console.WriteLine(loaderException.Message);
+                    ServerLogger.Log(loaderException.Message);
                 }
             }
         }
@@ -67,7 +67,7 @@ public static class TypeLoader
                 // Log loader exceptions if any
                 foreach (var loaderException in ex.LoaderExceptions)
                 {
-                    Console.WriteLine(loaderException.Message);
+                    ServerLogger.Log(loaderException.Message);
                 }
             }
         }

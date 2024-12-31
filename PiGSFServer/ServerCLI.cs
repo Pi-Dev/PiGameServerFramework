@@ -9,14 +9,16 @@ namespace PiGSF.Server
     {
         static void Main(string[] args)
         {
-            ConfigurationManager.RuntimeConfig = """{ "Theme": "Light" }""";
+            //Console.SetOut(new ConsoleWriteHandler());
 
-            Application.Init();
+            ConfigurationManager.RuntimeConfig = """{ "Theme": "Dark" }""";
+            Application.Init(null, "NetDriver");
+            MessageBox.DefaultBorderStyle = LineStyle.Double;
             Application.KeyBindings.Clear(Command.Quit);
             var ui = new ServerMainUI();
 
             var t = new Thread(() => {
-                Console.WriteLine("Pi Game Server Framework by Pi-Dev");
+                ServerLogger.Log("Pi Game Server Framework by Pi-Dev");
                 int port = int.Parse(ServerConfig.Get("bindPort"));
                 var server = new Server(port);
                 ui.server = server;

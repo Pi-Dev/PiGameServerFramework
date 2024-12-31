@@ -11,7 +11,7 @@ namespace PiGSF.Server.TUI
     internal class ServerMainUI : Toplevel
     {
         MenuBar _menuBar;
-        TextView _consoleTextView;
+        ServerLogView _consoleTextView;
         TextField _commandTextField;
         StatusBar _statusBar;
         Shortcut rooms, players, status;
@@ -20,7 +20,6 @@ namespace PiGSF.Server.TUI
 
         public ServerMainUI()
         {
-            // Initialize the UI components
             InitUI();
         }
 
@@ -28,7 +27,9 @@ namespace PiGSF.Server.TUI
         {
 
             // Create a MenuBar
-            _menuBar = new MenuBar();
+            _menuBar = new MenuBar()
+            {
+            };
             _menuBar.Menus = new MenuBarItem[]
             {
                 new MenuBarItem("_Server", new MenuItem[]
@@ -55,20 +56,17 @@ namespace PiGSF.Server.TUI
             };
 
             // Create a TextView for logs/console output
-            _consoleTextView = new TextView
+            _consoleTextView = new ServerLogView(server)
             {
                 X = 0,
                 Y = 1,
                 Width = Dim.Fill(),
                 Height = Dim.Fill() - 2,
-                ReadOnly = true,
-                WordWrap = true,
+                // ReadOnly = true,
+                // WordWrap = true,
                 CanFocus = false,
                 ColorScheme = new ColorScheme(new Attribute(0xdddddd, 0))
             };
-            var writer = new TextViewWriter(_consoleTextView);
-            Console.SetOut(writer);
-
 
             // Create a TextField for command input
             _commandTextField = new TextField
@@ -101,9 +99,9 @@ namespace PiGSF.Server.TUI
                     e.Handled = true; // Suppress default Enter behavior
                     _commandTextField.Text = ""; // Clear the field
                     
-                    Console.WriteLine("> " + command);
+                    ServerLogger.Log("> " + command);
                     HandleUICommand(command);
-                    server.HandleCommand(command);
+                    server?.HandleCommand(command);
                 }
             };
 
@@ -128,7 +126,7 @@ namespace PiGSF.Server.TUI
             Add(_statusBar);
 
             // Status bar routine
-            StatusLoop();
+            // StatusLoop();
         }
 
         async void StatusLoop()
@@ -148,7 +146,7 @@ namespace PiGSF.Server.TUI
 
                 // To CAUSE RACE CONDITIONS
                 // await Task.Yield();
-                // Console.WriteLine("statusRoutine");
+                // ServerLogger.Write("statusRoutine");
             }
         }
 
@@ -186,7 +184,7 @@ namespace PiGSF.Server.TUI
         public void ShowRooms() { }
         public void StopServer()
         {
-            Console.WriteLine("Stopping server...");
+            ServerLogger.Log("Stopping server...");
             server.Stop();
             status.Text = "Waiting for existing games to complete.";
         }

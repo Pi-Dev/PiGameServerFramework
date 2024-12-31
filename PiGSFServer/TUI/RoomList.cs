@@ -22,7 +22,7 @@ public class RoomList : Window
         Y = numTextWindows;
         Width = Dim.Fill() - 10;
         Height = Dim.Fill() - 6;
-        BorderStyle = LineStyle.Double;
+        //BorderStyle = LineStyle.Double;
         ShadowStyle = ShadowStyle.Transparent;
 
         VerticalScrollBar.Visible = true;

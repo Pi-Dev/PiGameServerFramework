@@ -28,7 +28,7 @@ namespace Transport
             this.server = serverRef;
             listener = new TcpListener(IPAddress.Any, port);
             listener.Start(100);
-            Console.WriteLine($"Server started on {port}");
+            ServerLogger.Log($"Server started on {port}");
             listener.BeginAcceptTcpClient(OnAccept, null);
         }
 
@@ -62,7 +62,7 @@ namespace Transport
                 // Avoid DDOS attackers, limit first pack to small size
                 if (size < 0 || size > ServerConfig.MaxInitialPacketSize)
                 {
-                    Console.WriteLine("ERROR: Client sending negative or too big header. Disconnecting");
+                    ServerLogger.Log("ERROR: Client sending negative or too big header. Disconnecting");
                     client.Close(); return;
                 }
 
@@ -73,11 +73,11 @@ namespace Transport
                 packet.Value.Dispose();
                 packet = null;
 
-                Console.WriteLine($"New client connected: {data}");
+                ServerLogger.Log($"New client connected: {data}");
                 var player = await server.AuthenticatePlayer(data);
                 if (player == null)
                 {
-                    Console.WriteLine("ERROR: Client Unauthorized");
+                    ServerLogger.Log("ERROR: Client Unauthorized");
                     client.Close(); return;
                 }
 
@@ -145,9 +145,9 @@ namespace Transport
             catch (IOException ex) { client.Close(); }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message);
+                ServerLogger.Log(e.Message);
             }
-            //Console.WriteLine("TCPTransport: ReceiveLoop: Client for player " + player.uid + " disconnected");
+            //ServerLogger.Write("TCPTransport: ReceiveLoop: Client for player " + player.uid + " disconnected");
             player.Disconnect();
         }
 
@@ -163,9 +163,9 @@ namespace Transport
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message);
+                ServerLogger.Log(e.Message);
             }
-            //Console.WriteLine("TCPTransport: SendLoop: Client for player " + player.uid + " disconnected");
+            //ServerLogger.Write("TCPTransport: SendLoop: Client for player " + player.uid + " disconnected");
             player.Disconnect();
         }
 
@@ -181,7 +181,7 @@ namespace Transport
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error accepting client: {ex.Message}");
+                ServerLogger.Log($"Error accepting client: {ex.Message}");
             }
             if (!stopAccepting) listener.BeginAcceptTcpClient(OnAccept, null);
         }
@@ -205,14 +205,14 @@ namespace Transport
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error sending data: {ex.Message}");
+                ServerLogger.Log($"Error sending data: {ex.Message}");
             }
         }
 
         public void Stop()
         {
             listener?.Stop();
-            Console.WriteLine("TCP Transport stopped.");
+            ServerLogger.Log("TCP Transport stopped.");
         }
 
         public void StopAccepting()

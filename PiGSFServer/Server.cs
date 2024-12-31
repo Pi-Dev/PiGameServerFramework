@@ -30,37 +30,37 @@ namespace PiGSF.Server
 
         List<Type> InitRoomTypes()
         {
-            Console.WriteLine("[===== Room Types =====]");
+            ServerLogger.Log("[===== Room Types =====]");
             var ts = TypeLoader.GetSubclassesOf<Room>();
             foreach (var r in ts)
             {
-                Console.WriteLine($"|- {r.Name} [{r.FullName}]");
+                ServerLogger.Log($"|- {r.Name} [{r.FullName}]");
             }
-            Console.WriteLine("|");
+            ServerLogger.Log("|");
             return ts;
         }
 
         List<Type> InitTransports()
         {
-            Console.WriteLine("[===== Transports =====]");
+            ServerLogger.Log("[===== Transports =====]");
             var ts = TypeLoader.GetTypesImplementing<ITransport>();
             foreach (var r in ts)
             {
-                Console.WriteLine($"|- {r.Name} [{r.FullName}]");
+                ServerLogger.Log($"|- {r.Name} [{r.FullName}]");
             }
-            Console.WriteLine("|");
+            ServerLogger.Log("|");
             return ts;
         }
 
         List<Type> InitAuthenticators()
         {
-            Console.WriteLine("[=== Authenticators ===]");
+            ServerLogger.Log("[=== Authenticators ===]");
             var ts = TypeLoader.GetTypesImplementing<IAuthProvider>();
             foreach (var r in ts)
             {
-                Console.WriteLine($"|- {r.Name} [{r.FullName}]");
+                ServerLogger.Log($"|- {r.Name} [{r.FullName}]");
             }
-            Console.WriteLine("|");
+            ServerLogger.Log("|");
             return ts;
         }
 
@@ -73,11 +73,11 @@ namespace PiGSF.Server
             else if (s == "keys")
             {
                 var keys = RSAEncryption.GenerateRSAKeyPairs(512);
-                Console.WriteLine();
-                Console.WriteLine(keys.PrivateKey);
-                Console.WriteLine();
-                Console.WriteLine(keys.PublicKey);
-                Console.WriteLine();
+                ServerLogger.Log("");
+                ServerLogger.Log(keys.PrivateKey);
+                ServerLogger.Log("");
+                ServerLogger.Log(keys.PublicKey);
+                ServerLogger.Log("");
             }
         }
 
@@ -121,7 +121,7 @@ namespace PiGSF.Server
                 r.messageQueue.Enqueue(new Room.ShutdownRequest());
             })));
 
-            Console.WriteLine("Waiting for rooms to complete.");
+            ServerLogger.Log("Waiting for rooms to complete.");
 
             // Depending of hosted games, some rooms may need a ton of time to complete, especially if ranked
             // While I don't believe that this server will be used in a E-Sport someday, 
@@ -143,7 +143,7 @@ namespace PiGSF.Server
                     break;
                 }
             }
-            Console.WriteLine("All rooms stopped. SHUTTING DOWN...");
+            ServerLogger.Log("All rooms stopped. SHUTTING DOWN...");
             Application.RequestStop();
         }
 

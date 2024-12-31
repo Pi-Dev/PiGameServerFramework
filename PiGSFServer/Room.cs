@@ -87,7 +87,7 @@ namespace PiGSF.Server
         {
             roomThreadId = Thread.CurrentThread.ManagedThreadId;
 
-            Console.WriteLine("Thread for room " + GetType().Name + " started");
+            ServerLogger.Log("Thread for room " + GetType().Name + " started");
             try
             {
 
@@ -105,7 +105,7 @@ namespace PiGSF.Server
                         else if (item is RoomEvent re)
                         {
                             try { re.func(); }
-                            catch (Exception e) { Console.WriteLine(e); Log.Write(e.ToString()); }
+                            catch (Exception e) { ServerLogger.Log(e.ToString()); Log.Write(e.ToString()); }
                         }
                         else if (item is PlayerDisconnect pd)
                             OnPlayerDisconnected(pd.pl, pd.disband);
@@ -123,18 +123,18 @@ namespace PiGSF.Server
                             break;
                     }
                 }
-                Console.WriteLine("Thread for room " + GetType().Name + " ended");
+                ServerLogger.Log("Thread for room " + GetType().Name + " ended");
                 Dispose();
             }
             catch (Exception e)
             {
                 string message = $"ROOM {Id}: {GetType().Name} ENCOUNTERED ERROR:\n" + e.ToString();
-                Console.WriteLine(message);
+                ServerLogger.Log(message);
                 Log.Write(message);
                 if(Server.defaultRoom == this)
                 {
                     message = "CRITICAL! THE DEFAULT ROOM CRASHED!";
-                    Console.WriteLine(message);
+                    ServerLogger.Log(message);
                     Log.Write(message);
                     Server.defaultRoom = ServerConfig.defaultRoom;
                 }

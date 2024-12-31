@@ -19,8 +19,8 @@ public class LogWindow : Window
         Y = numLogs;
         Width = Dim.Fill() - 6;
         Height = Dim.Fill() - 6;
-        BorderStyle = LineStyle.Double;
-        ShadowStyle = ShadowStyle.Transparent;
+        BorderStyle = LineStyle.Heavy;
+        ShadowStyle = ShadowStyle.None;
 
         // Textview
         _textView = new TextView
