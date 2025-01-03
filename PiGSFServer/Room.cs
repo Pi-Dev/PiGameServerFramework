@@ -19,45 +19,24 @@ namespace PiGSF.Server
         public readonly string Name;
 
         // Room properties
-        CancellationTokenSource? cts; // For managing cancellation of the loop
-        int _tickRate = 0;
-        public int TickRate
-        {
-            get => _tickRate;
-            set
-            {
-                if (_tickRate == value) return;
-                cts?.Cancel();
-                Log.Write("Tickrate change for room " + Id + " requested");
-                if (_tickRate > 0)
-                {
-                    messageQueue.Enqueue(new RoomEvent(() =>
-                    {
-                        Log.Write($"Tickrate for room {Id}: set to {value}");
-                        cts = new CancellationTokenSource();
-                        _ = UpdateLoop(cts.Token);
-                    }));
-                }
-                _tickRate = value;
-            }
-        }
-        public int MinPlayers { get; set; } = 1;
-        public int MaxPlayers { get; set; } = 16;
-        public int MaxClients { get; set; } = 32;
-        public int WaitTime { get; set; } = 60;
-        public bool WaitForMinPlayers { get; set; } = true;
-        public bool AllowPlayers { get; set; } = true;
-        public bool AllowSpectators { get; set; } = true;
+        public int TickRate = 60;
+        public int MinPlayers = 1;
+        public int MaxPlayers = 16;
+        public int MaxClients = 32;
+        public int WaitTime = 60;
+        public bool WaitForMinPlayers = true;
+        public bool AllowPlayers = true;
+        public bool AllowSpectators = true;
 
-        public int RoomTimeout { get; set; } = ServerConfig.DefaultRoomTimeout;
-        public int PlayerDisbandTimeout { get; set; } = -1;
+        public int RoomTimeout = ServerConfig.DefaultRoomTimeout;
+        public int PlayerDisbandTimeout = -1;
 
         // Connected players and banned players
         protected ConcurrentList<Player> ConnectedPlayers = new();
         protected ConcurrentBag<string> BannedPlayerUids = new();
         public (int connected, int total) GetPlayersData()
         {
-            lock(ConnectedPlayers)
+            lock (ConnectedPlayers)
             {
                 int connected = 0;
                 foreach (Player player in ConnectedPlayers) if (player.IsConnected()) connected++;
@@ -83,46 +62,76 @@ namespace PiGSF.Server
 
         volatile int roomThreadId = 0;
 
+        // returns false to stop the thread
+        bool RoomThreadProcessEvent(IRoomEvent item)
+        {
+            if (item is PlayerMessage pm)
+                OnMessageReceived(pm.msg, pm.pl);
+            else if (item is RoomEvent re)
+            {
+                try { re.func(); }
+                catch (Exception e) { ServerLogger.Log(e.ToString()); Log.Write(e.ToString()); }
+            }
+            else if (item is PlayerDisconnect pd)
+                OnPlayerDisconnected(pd.pl, pd.disband);
+            else if (item is RoomStartEvent)
+            {
+                if (_isStarted)
+                {
+                    _isStarted = true;
+                    Start();
+                }
+            }
+            else if (item is ShutdownRequest)
+                OnShutdownRequested();
+            else if (item is RoomStopEvent)
+                return false;
+            return true;
+        }
+
         void RoomThread()
         {
             roomThreadId = Thread.CurrentThread.ManagedThreadId;
 
             ServerLogger.Log("Thread for room " + GetType().Name + " started");
+
+            // 1. Determine when first Update must be called
+            var t = new Stopwatch(); t.Start();
+            long tickInterval = Stopwatch.Frequency / TickRate; // Ticks for 1 / TickRate seconds
+            long NextUpdateTick = t.ElapsedTicks + tickInterval;
+
             try
             {
-
-                cts = new CancellationTokenSource();
-                _ = UpdateLoop(cts.Token);
-
-                while (true)
+                while (true) // breaks when RoomStopEvent received
                 {
-                    Thread.Yield();
+                    Thread.Yield(); // Yield hint for others to run...
 
-                    if (messageQueue.TryDequeue(out var item))
+                    // 1. Process messages until close to next update time or queue is empty
+                    while (t.ElapsedTicks < NextUpdateTick - Stopwatch.Frequency / 1000 * 1
+                        && messageQueue.TryDequeue(out var item))
+                        if (!RoomThreadProcessEvent(item)) goto EndOfThread;
+
+                    // 2. WAIT! Sleep the thread for a short time to avoid busy-waiting
+                    long currentTicks = t.ElapsedTicks;
+                    int timeout = (int)Math.Max(1, (NextUpdateTick - currentTicks) * 1000 / Stopwatch.Frequency); // Convert ticks to ms
+                    if (timeout > 0) lock (messageQueue) Monitor.Wait(messageQueue, timeout);
+
+                    // 3. Finally, call Update
+                    if (t.ElapsedTicks >= NextUpdateTick)
                     {
-                        if (item is PlayerMessage pm)
-                            OnMessageReceived(pm.msg, pm.pl);
-                        else if (item is RoomEvent re)
+                        Update((float)tickInterval / Stopwatch.Frequency);
+
+                        // Schedule the next update
+                        NextUpdateTick += tickInterval;
+
+                        // Adjust in case of excessive delay
+                        if (t.ElapsedTicks > NextUpdateTick)
                         {
-                            try { re.func(); }
-                            catch (Exception e) { ServerLogger.Log(e.ToString()); Log.Write(e.ToString()); }
+                            NextUpdateTick = t.ElapsedTicks + tickInterval;
                         }
-                        else if (item is PlayerDisconnect pd)
-                            OnPlayerDisconnected(pd.pl, pd.disband);
-                        else if (item is RoomStartEvent)
-                        {
-                            if (_isStarted)
-                            {
-                                _isStarted = true;
-                                Start();
-                            }
-                        }
-                        else if (item is ShutdownRequest)
-                            OnShutdownRequested();
-                        else if (item is RoomStopEvent)
-                            break;
                     }
                 }
+            EndOfThread: // Yeah, this, prefer to keep it here for readability
                 ServerLogger.Log("Thread for room " + GetType().Name + " ended");
                 Dispose();
             }
@@ -131,7 +140,7 @@ namespace PiGSF.Server
                 string message = $"ROOM {Id}: {GetType().Name} ENCOUNTERED ERROR:\n" + e.ToString();
                 ServerLogger.Log(message);
                 Log.Write(message);
-                if(Server.defaultRoom == this)
+                if (Server.defaultRoom == this)
                 {
                     message = "CRITICAL! THE DEFAULT ROOM CRASHED!";
                     ServerLogger.Log(message);
@@ -139,28 +148,6 @@ namespace PiGSF.Server
                     Server.defaultRoom = ServerConfig.defaultRoom;
                 }
                 Dispose();
-            }
-        }
-        async Task UpdateLoop(CancellationToken ct)
-        {
-            while (true)
-            {
-                if (ct.IsCancellationRequested) return;
-                try
-                {
-                    var dt = 1 / TickRate;
-                    await Task.Delay(dt * 1000, ct);
-                    Update(dt);
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    //task is cancelled, return or do something else
-                    return;
-                }
-                catch (DivideByZeroException)
-                {
-                    return; // expected
-                }
             }
         }
 
@@ -223,7 +210,7 @@ namespace PiGSF.Server
         /// Thread-safe
         public void Stop()
         {
-            messageQueue.Enqueue(new RoomStopEvent());
+            messageQueue.EnqueueAndNotify(new RoomStopEvent());
         }
         public volatile bool eligibleForDeletion = false;
 
@@ -292,11 +279,11 @@ namespace PiGSF.Server
 
             player.activeRoom = this;
             player.rooms = null;
-            messageQueue.Enqueue(new RoomEvent(() => { OnPlayerConnected(player, isNew: !isReconnect); }));
+            messageQueue.EnqueueAndNotify(new RoomEvent(() => { OnPlayerConnected(player, isNew: !isReconnect); }));
 
             // Check if game should start
             if (!_isStarted && (!WaitForMinPlayers || ConnectedPlayers.Count >= MinPlayers))
-                messageQueue.Enqueue(new RoomStartEvent());
+                messageQueue.EnqueueAndNotify(new RoomStartEvent());
 
             return true;
         }
@@ -311,7 +298,7 @@ namespace PiGSF.Server
             if (!ConnectedPlayers.Contains(player)) return; // Deadlock
 
             ConnectedPlayers.Remove(player);
-            messageQueue.Enqueue(new RoomEvent(() =>
+            messageQueue.EnqueueAndNotify(new RoomEvent(() =>
             {
                 OnPlayerDisconnected(player, disband: true);
             }));
@@ -330,7 +317,7 @@ namespace PiGSF.Server
             }
             else if (!WaitForMinPlayers && WaitTime <= 0)
             {
-                messageQueue.Enqueue(new RoomEvent(Start));
+                messageQueue.EnqueueAndNotify(new RoomEvent(Start));
             }
         }
 
@@ -346,7 +333,7 @@ namespace PiGSF.Server
                     await Task.Delay(WaitTime * 1000, token);
                     if (!_isStarted)
                     {
-                        messageQueue.Enqueue(new RoomEvent(Start));
+                        messageQueue.EnqueueAndNotify(new RoomEvent(Start));
                     }
                 }
                 catch (TaskCanceledException) { }
@@ -379,13 +366,17 @@ namespace PiGSF.Server
         {
             if (!disposedValue)
             {
+                // defaultRoom is a special case - first zero it down, causing players to be disconnected
+                if(this == Server.defaultRoom) Server.defaultRoom = null;
+
                 // Remove this room from all referenced player
-                ConnectedPlayers.ForEach(p => { 
+                ConnectedPlayers.ForEach(p =>
+                {
                     p.rooms.Remove(this);
                     if (p.activeRoom == this) p.activeRoom = null;
                     if (p.rooms.Count == 0 && p.activeRoom == null)
                     {
-                        if(Server.defaultRoom == null)
+                        if (Server.defaultRoom == null)
                             p.Disconnect();
                         else p.JoinRoom(Server.defaultRoom, true);
                     }

@@ -45,7 +45,7 @@ namespace PiGSFClient.Transport
                     while (tcpClient.Connected)
                     {
                         var hdrb = abs.Rent(sz);
-                        stream.ReadExactly(hdrb, 0, sz);
+                        stream.ReadExactly(hdrb, 0, sz); // This is the usual rest place of this thread
                         int size = ClientConfig.HeaderSize switch
                         {
                             1 => hdrb[0],
@@ -59,6 +59,7 @@ namespace PiGSFClient.Transport
                             byte[] buffer = new byte[size];
                             stream.ReadExactly(buffer, 0, size);
                             client.messages.Enqueue(buffer);
+                            lock (client.messages) Monitor.PulseAll(client.messages);
                         }
                     }
                     Thread.Sleep(1);
@@ -75,6 +76,7 @@ namespace PiGSFClient.Transport
                 isConnected = false;
                 tcpClient.Dispose();
             });
+            recvThread.Name = "TCP Receiver # ";
             recvThread.Start();
             isConnected = true;
         }

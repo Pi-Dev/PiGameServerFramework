@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Net.Quic;
 using System.Net.Sockets;
 using System.Numerics;
 using System.Text;
@@ -23,6 +24,7 @@ namespace Transport
         ObjectPooler<byte[]> messageBuffers = new(() => new byte[1024]);
         TcpListener listener;
 
+        // Running on Server Thread once
         public void Init(int port, Server serverRef)
         {
             this.server = serverRef;
@@ -44,26 +46,16 @@ namespace Transport
             else return;
 
             if (client != null)
-                Task.Run(() =>
-                {
-                    try
-                    {
-                        OnClientConnected(client);
-                    }
-                    catch (Exception ex)
-                    {
-                        ServerLogger.Log($"OnAcceptConcurrent: Error accepting client: {ex.Message}");
-                    }
-                });
+            {
+                var ClientConnected = new Thread(() => OnClientConnected(client));
+                ClientConnected.Name = "TCP OnClientConnected";
+                ClientConnected.Start();
+            }
         }
 
         // Thread: Started from OnAcceptConcurrent
-        int call = 0;
         void OnClientConnected(TcpClient client)
         {
-            call++;
-            if (call % 10 == 0) ServerLogger.Log($"[{call}] OnClientConnected");
-
             client.NoDelay = true;
             var hdrb = headerBuffers.Buy();
             (byte[] bytes, Action Dispose)? packet = null;
@@ -77,7 +69,7 @@ namespace Transport
                 // Avoid DDOS attackers, limit first pack to small size
                 if (size < 0 || size > ServerConfig.MaxInitialPacketSize)
                 {
-                    if (call % 10 == 0) ServerLogger.Log($"[{call}] ERROR: Client sending negative or too big header. Disconnecting");
+                    ServerLogger.Log($"ERROR: Client sending negative or too big header. Disconnecting");
                     client.Close(); return;
                 }
 
@@ -87,17 +79,23 @@ namespace Transport
                 data = Encoding.UTF8.GetString(packet.Value.bytes, 0, size);
                 packet.Value.Dispose();
                 packet = null;
-                if (call % 10 == 0) ServerLogger.Log($"[{call}] Client Data: {data}");
                 var player = server.AuthenticatePlayer(data).GetAwaiter().GetResult();
                 if (player == null)
                 {
-                    if (call % 10 == 0) ServerLogger.Log($"[{call}] ERROR: Client Unauthorized");
+                    ServerLogger.Log($"ERROR: Client Unauthorized");
                     client.Close(); return;
                 }
 
                 // Player is connected, create the API and give response
-                var messageQueue = new ConcurrentQueue<byte[]>();
-                player._SendData = (data) => messageQueue.Enqueue(Message.Create(data));
+                var messageQueue = new Queue<byte[]>();
+                player._SendData = (data) =>
+                {
+                    lock (messageQueue)
+                    {
+                        messageQueue.Enqueue(Message.Create(data));
+                        Monitor.Pulse(messageQueue);
+                    }
+                };
                 player._CloseConnection = stream.Close;
 
                 // Send a message to the player to tell him the room details and room id
@@ -107,17 +105,17 @@ namespace Transport
                 player.Send(m.ToArray());
 
                 // Experiment 1: 
-                if (call % 10 == 0) ServerLogger.Log($"[{call}] EXPERIMENT 1 START");
-                var sender = SendLoop(client, player, messageQueue);
-                var receiver = ReceiveLoop(client, player);
-                if (call % 10 == 0) ServerLogger.Log($"[{call}] EXPERIMENT 1 ENDED");
+                //var sender = SendLoop(client, player, messageQueue);
+                //var receiver = ReceiveLoop(client, player);
 
-                // Start the I/O routines as 2 separate threads
-                //if (call % 10 == 0) ServerLogger.Log($"[{call}] Starting I/O threads");
-                //var t = new Thread(()=>SendLoop(client, player, messageQueue));
-                //t.Name = $"Client {call}: SendLoop";
-                //Thread.CurrentThread.Name = $"Client {call}: ReceiveLoop [repurposed]";
-                //ReceiveLoop(client, player);
+                // Start the sender thread...
+                var sender = new Thread(() => SendLoop(client, player, messageQueue));
+                sender.Name = $"{player.id} ({player.username}): TCP Send";
+                sender.Start();
+
+                // Repurpose current thread as Receiver Thread
+                Thread.CurrentThread.Name = $"{player.id} ({player.username}): TCP Recv";
+                ReceiveLoop(client, player);
             }
             catch (IOException ex) { }
             catch (Exception ex)
@@ -131,9 +129,8 @@ namespace Transport
             }
         }
 
-        async Task ReceiveLoop(TcpClient client, Player player)
+        void ReceiveLoop(TcpClient client, Player player)
         {
-            await Task.Yield();
             var abs = ArrayPool<byte>.Shared;
             int sz = (int)ServerConfig.HeaderSize;
             var stream = client.GetStream();
@@ -142,7 +139,7 @@ namespace Transport
                 while (client.Connected)
                 {
                     var hdrb = abs.Rent(sz);
-                    await stream.ReadExactlyAsync(hdrb, 0, sz);
+                    stream.ReadExactly(hdrb, 0, sz); // good wait place!
                     int size = sz switch
                     {
                         1 => hdrb[0],
@@ -154,13 +151,15 @@ namespace Transport
                     if (size > 0)
                     {
                         byte[] buffer = new byte[size];
-                        await stream.ReadExactlyAsync(buffer, 0, size);
+                        stream.ReadExactly(buffer, 0, size);
 
                         // Deliver the message to all rooms where player is connected
                         var pm = new Room.PlayerMessage { msg = buffer, pl = player };
                         var rooms = player.rooms;
                         foreach (var r in rooms)
-                            r.messageQueue.Enqueue(pm);
+                        {
+                            r.messageQueue.EnqueueAndNotify(pm);
+                        }
                     }
 
                 }
@@ -174,15 +173,22 @@ namespace Transport
             player.Disconnect();
         }
 
-        async Task SendLoop(TcpClient client, Player player, ConcurrentQueue<byte[]> queue)
+        void SendLoop(TcpClient client, Player player, Queue<byte[]> queue)
         {
-            await Task.Yield();
             var stream = client.GetStream();
             try
             {
+                byte[][] msgs;
                 while (client.Connected)
-                    if (queue.TryDequeue(out var msg))
-                        await stream.WriteAsync(msg);
+                {
+                    lock (queue)
+                    {
+                        if (queue.Count == 0) Monitor.Wait(queue, 1000);
+                        msgs = queue.ToArray();
+                        queue.Clear();
+                    }
+                    foreach (var msg in msgs) stream.Write(msg);
+                }
             }
             catch (Exception e)
             {

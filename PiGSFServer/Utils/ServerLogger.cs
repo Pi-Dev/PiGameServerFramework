@@ -1,4 +1,5 @@
 ﻿using PiGSF.Server;
+using System;
 using System.Collections.Concurrent;
 using System.Text;
 
@@ -20,12 +21,20 @@ public class ConsoleWriteHandler : TextWriter
 
 public static class ServerLogger
 {
-    internal static readonly ConcurrentQueue<string> messages = new();
+    class LogEntry
+    {
+        internal DateTime ts;
+        internal object sender;
+        internal string message;
+    }
+    private static readonly Queue<LogEntry> messages = new();
+    public static List<string> lastMessagesBuffer = new();
 
     private const int maxLogLines = 1000;
     private static readonly string _logFilePath;
     internal static ServerLogView? logWindow;
 
+    static Thread loggerThread;
     static ServerLogger()
     {
         // Generate log file path
@@ -37,21 +46,88 @@ public static class ServerLogger
 
         // Write initial log file header
         File.AppendAllText(_logFilePath, $"--- Server Framework started at {DateTime.Now} ---\n");
+
+        loggerThread = new Thread(LoggerThread);
+        loggerThread.Name = "Server Logger";
+        loggerThread.Start();
+    }
+
+    static void LoggerThread()
+    {
+        try
+        {
+            while (true)
+            {
+                LogEntry[] msgs;
+                lock (messages)
+                {
+                    if (messages.Count == 0) Monitor.Wait(messages, 500);
+                    msgs = messages.ToArray();
+                    messages.Clear();
+                }
+                foreach (var m in msgs)
+                {
+                    string fn, entry;
+                    var IOs = new List<(string fn, string msg, RoomLogger? rl)>();
+                    entry = $"{m.ts:yyyy-MM-dd HH:mm:ss}│ {m.message}";
+                    if (m.sender is RoomLogger l)
+                    {
+                        var first = IOs.Where(x => x.fn == l._logFilePath).ToArray();
+                        if (first.Length == 0) IOs.Add((l._logFilePath, m.message + "\n", l));
+                        else first[0].msg += m.message + "\n";
+                    }
+                    else
+                    {
+                        var first = IOs.Where(x => x.fn == _logFilePath).ToArray();
+                        if (first.Length == 0) IOs.Add((_logFilePath, m.message + "\n", null));
+                        else first[0].msg += m.message + "\n";
+                    }
+                    foreach (var io in IOs)
+                    {
+                        File.AppendAllText(io.fn, io.msg);
+                        if (io.rl != null)
+                        {
+                            io.rl.roomBuffer.Add(io.msg);
+                            io.rl.logWindow?.AddText(io.msg);
+                        }
+                        else
+                        {
+                            lastMessagesBuffer.Add(io.msg);
+                            logWindow?.AddText(io.msg);
+                        }
+                    }
+                }
+            }
+        }
+        catch(ThreadInterruptedException) 
+        {
+            if (mustExit) return;
+        }
+    }
+
+    public static void LogRoom(RoomLogger l, string message)
+    {
+        lock (messages)
+        {
+            messages.Enqueue(new(){ message = message, sender = l, ts = DateTime.Now });
+            Monitor.Pulse(messages);
+        }
     }
 
     public static void Log(string message)
     {
         string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}│ {message}";
-        //lock (messages)
-        //{
-        //    messages.Enqueue(logEntry);
-        //}
-        // Write to the log file
-        //File.AppendAllText(_logFilePath, logEntry + Environment.NewLine);
+        lock (messages)
+        {
+            messages.Enqueue(new() { message = message, ts = DateTime.Now });
+            Monitor.Pulse(messages);
+        }
+    }
 
-        // Update the log window, if any
-        //logWindow?.RefreshLogs();
-        Console.WriteLine(logEntry);
-
+    volatile static bool mustExit = false;
+    internal static void Stop()
+    {
+        mustExit = true;
+        loggerThread.Interrupt();
     }
 }

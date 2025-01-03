@@ -17,7 +17,7 @@ public class LogWindow : Window
         _logger = room.Log;
         ColorScheme = new ColorScheme(new Attribute(Color.White, Color.DarkGray));
         X = 6 + numLogs;
-        Y = numLogs;
+        Y = numLogs + 4;
         Width = Dim.Fill() - 6;
         Height = Dim.Fill() - 6;
         BorderStyle = LineStyle.Double;
@@ -51,34 +51,27 @@ public class LogWindow : Window
                 Dispose();
             };
         };
-        shouldRefreshLogs = true;
         postInit();
     }
 
     async void postInit()
     {
-        while (!updateLoopCancel.IsCancellationRequested)
-        {
-            await Task.Yield();
-            if (shouldRefreshLogs)
-            {
-                shouldRefreshLogs = false;
-                RefreshLogsImpl();
-            }
-        }
+        await Task.Yield();
+        RefreshLogs();
     }
 
     volatile bool shouldRefreshLogs = false;
 
-    public void RefreshLogs()
+    public void AddText(string text)
     {
-        shouldRefreshLogs = true;
+        _textView.Text += text;
+        _textView.MoveEnd();
     }
 
-    public void RefreshLogsImpl()
+    public void RefreshLogs()
     {
-        var logs = _logger.messages;
-        _textView.Text = string.Join("\n", logs);
+        var logs = _logger.roomBuffer;
+        _textView.Text = string.Join("",logs);
         _textView.MoveEnd(); // Scroll to the end
     }
 }

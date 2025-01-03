@@ -11,6 +11,16 @@ namespace PiGSF.Server
         public string name = "Guest";
         public string username = "guest";
         public int elo = 0;
+
+        public string ToTableString()
+        {
+            return
+                /* Id  */ id.ToString().PadRight(5) + "| " +
+                // /* ELO  */ elo.ToString().PadRight(5) + "| " +  // Sample line!
+                /* username */ username.PadRight(16) + " | " +
+                // /* name */ name.PadRight(32) + " | " +
+                /* uid */ uid.PadRight(48) + " |";
+        }
     }
 
     public static class ServerConfig

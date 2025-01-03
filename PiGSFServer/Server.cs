@@ -99,6 +99,7 @@ namespace PiGSF.Server
             defaultRoom = ServerConfig.defaultRoom;
         }
 
+        // Running on Server Thread
         public void Start()
         {
             transports.ForEach(x => x.Init(port, this));
@@ -114,11 +115,11 @@ namespace PiGSF.Server
             catch { }
 
             // Send ShutdownRequest to all rooms
-            Room.rooms.ForEach(r => r.messageQueue.Enqueue(new Room.RoomEvent(() =>
+            Room.rooms.ForEach(r => r.messageQueue.EnqueueAndNotify(new Room.RoomEvent(() =>
             {
                 r.AllowPlayers = false;
                 r.AllowSpectators = false;
-                r.messageQueue.Enqueue(new Room.ShutdownRequest());
+                r.messageQueue.EnqueueAndNotify(new Room.ShutdownRequest());
             })));
 
             ServerLogger.Log("Waiting for rooms to complete.");
@@ -144,7 +145,9 @@ namespace PiGSF.Server
                 }
             }
             ServerLogger.Log("All rooms stopped. SHUTTING DOWN...");
+            ServerLogger.Stop();
             Application.RequestStop();
+            ServerLogger.Log("Application should be shutdown now!");
         }
 
         public async Task<Player?> AuthenticatePlayer(string connectionPayload)

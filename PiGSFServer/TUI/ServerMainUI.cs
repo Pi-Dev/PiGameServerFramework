@@ -27,9 +27,7 @@ namespace PiGSF.Server.TUI
         {
 
             // Create a MenuBar
-            _menuBar = new MenuBar()
-            {
-            };
+            _menuBar = new MenuBar();
             _menuBar.Menus = new MenuBarItem[]
             {
                 new MenuBarItem("_Server", new MenuItem[]
@@ -45,7 +43,7 @@ namespace PiGSF.Server.TUI
                     new MenuItem("_Show", "", () => {
                         string str = "";
                         server.knownPlayers.ForEach(p => str += $"{p.id.ToString().PadRight(6)} | {p.name} ({p.username}) => {p.uid}\n");
-                        var tx = new TextWindow($" Rooms list ", str);
+                        var tx = new PlayersList(server);
                         Add(tx);
                     })
                 }),
@@ -139,8 +137,11 @@ namespace PiGSF.Server.TUI
                 SetRoomCount(rc);
                 SetPlayerCount(pc, ac);
 
-                foreach (var h in this.Subviews.Where(h => h is RoomList))
-                    (h as RoomList).UpdateRooms();
+                foreach (var h in this.Subviews)
+                {
+                    if (h is RoomList RL) RL.UpdateItems();
+                    if (h is PlayersList PL) PL.UpdateItems();
+                }
 
                 await Task.Delay(500); 
 

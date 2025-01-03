@@ -7,8 +7,6 @@ using Attribute = Terminal.Gui.Attribute;
 
 public class RoomList : Window
 {
-    private readonly TextView _textView;
-
     static int numTextWindows = 0;
     ServerMainUI main;
     public RoomList(Server server)
@@ -40,7 +38,7 @@ public class RoomList : Window
         {
             foreach (var b in buttons) b.Value.Dispose();
         };
-        UpdateRooms();
+        UpdateItems();
     }
 
     Dictionary<int, Button> buttons = new Dictionary<int, Button>();
@@ -93,7 +91,7 @@ public class RoomList : Window
         SetContentSize(cs);
     }
 
-    public async void UpdateRooms()
+    public async void UpdateItems()
     {
         await Task.Yield();
         try { _updateRooms(); } catch { Exception ex; }

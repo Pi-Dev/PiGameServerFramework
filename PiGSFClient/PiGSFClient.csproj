@@ -8,5 +8,10 @@
     <PublishAot>False</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\PiGSFServer\Utils\ConcurrentList.cs" Link="ConcurrentList.cs" />
+    <Compile Include="..\PiGSFServer\Utils\Pooler.cs" Link="Pooler.cs" />
+  </ItemGroup>
  
 </Project>

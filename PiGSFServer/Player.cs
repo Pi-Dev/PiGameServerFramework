@@ -1,5 +1,6 @@
 ﻿using Transport;
 using System;
+using PiGSF.Utils;
 
 namespace PiGSF.Server
 {
@@ -80,7 +81,7 @@ namespace PiGSF.Server
             foreach (var r in rooms)
             {
                 if (disband) r.RemovePlayer(this);
-                else r.messageQueue.Enqueue(new Room.PlayerDisconnect { pl = this, disband = false });
+                else r.messageQueue.EnqueueAndNotify(new Room.PlayerDisconnect { pl = this, disband = false });
             }
             _rooms = null;
 

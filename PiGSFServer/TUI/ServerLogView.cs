@@ -32,20 +32,11 @@ public class ServerLogView : View
         _textView.VerticalScrollBar.Visible = true;
 
         Add(_textView);
-
-        postInit();
     }
 
-    async void postInit()
+    internal void AddText(string str)
     {
-        await Task.Yield();
-        RefreshLogs();
-    }
-
-    public void RefreshLogs()
-    {
-        var logs = ServerLogger.messages;
-        _textView.Text = string.Join("\n", logs);
-        _textView.MoveEnd(); // Scroll to the end
+        _textView.Text += str;
+        _textView.MoveEnd();
     }
 }
