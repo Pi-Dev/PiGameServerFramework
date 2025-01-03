@@ -84,6 +84,7 @@ namespace PiGSF.Server
                         
                         rooms, r    => Displays list of all active rooms
                         r [id/name] => Opens log for chosen room
+                        rp, ri [id] => Shows info for given room by id/name
                         rs [name]   => Searches rooms by name (or shows named rooms)
                         q, b, back  => Exits back to main log
                         """);
@@ -133,11 +134,21 @@ namespace PiGSF.Server
                 var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
                 if (tokens.Length > 1)
                 {
-                    //first try name search 
                     var r = Room.GetByName(tokens[1]);
                     if (r == null && int.TryParse(tokens[1], out int roomID)) r = Room.GetById(roomID);
                     if (r == null) Console.WriteLine($"No room with id/name {tokens[1]} exists");
                     else ServerLogger.SetOutputToRoom(r);
+                }
+            }
+            else if (s.StartsWith("rp ") || s.StartsWith("ri "))
+            {
+                var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
+                if (tokens.Length > 1)
+                {
+                    Room r = null;
+                    if (int.TryParse(tokens[1], out int roomID)) r = Room.GetById(roomID);
+                    if (r == null) Console.WriteLine($"No room with id/name {tokens[1]} exists");
+                    else ShowRoomInfo(r);
                 }
             }
             else if (s == "players" || s == "p")
@@ -169,6 +180,45 @@ namespace PiGSF.Server
             }
         }
 
+        void ShowRoomInfo(Room r)
+        {
+            List<Player> Connected = new(), Tracked = new();
+            r._ConnectedPlayers.ForEach(x => (x.IsConnected() ? Connected : Tracked).Add(x));
+            string s =
+                 $"+================= ROOM ID = {r.Id,-5} ======================+\n";
+            s += $"│  {$"ID: {r.Id} - NAME: {r.Name} - ROOM TYPE: {r.GetType().Name}",-53} │\n";
+            s += $"│  {$"Players: ({Connected.Count} connected / {Tracked.Count} tracked)",-53} │\n";
+            s += $"│  {$"Room Status: {r.Status}",-53} │\n";
+            s += $"│  {$"",-53} │\n";
+
+            s += $"│  {"CONNECTED PLAYERS:",-53} │\n";
+            for (int i = 0; i < Connected.Count; i += 2)
+            {
+                var p1 = Connected[i];
+                var p2 = (i + 1 < Connected.Count) ? Connected[i + 1] : null;
+                s += $"│  {$" #{p1.id} {p1.username}  ({p1.name})",-26}" +
+                     (p2 != null ? $" {$" #{p2.id} {p2.username} ({p2.name})",-26}" : "".PadLeft(26)) + " │\n";
+            }
+
+            s += $"│  {$"",-53} │\n";
+
+            s += $"│  {$"TRACKED PLAYERS (Not in this room):",-53} │\n";
+            for (int i = 0; i < Tracked.Count; i += 2)
+            {
+                var p1 = Tracked[i];
+                var p2 = (i + 1 < Tracked.Count) ? Tracked[i + 1] : null;
+                s += $"│  {$" #{p1.id} {p1.username}  ({p1.name})",-26}" +
+                     (p2 != null ? $" {$" #{p2.id} {p2.username} ({p2.name})",-26}" : "".PadLeft(26)) + " │\n";
+            }
+
+            s += $"│  {$"",-53} │\n";
+
+            s += $"│  {$"Log file:  {r.Log._logFilePath}",-53} │\n";
+            s += $"│  {$"Type `r {r.Id} to see room's log`",-53} │\n";
+
+
+            Console.WriteLine(s);
+        }
         void ShowPlayerInfo(Player p)
         {
             string s =
@@ -176,7 +226,7 @@ namespace PiGSF.Server
             s += $"│  UID:       {p.uid.PadRight(42)} │\n";
             s += $"│  Username:  {p.username.PadRight(42)} │\n";
             s += $"│  Name:      {p.name.PadRight(42)} │\n";
-            s += $"│                                                        │\n";
+            s += $"│  {$"",-53} │\n";
             if (p.IsConnected())
             {
                 var r = p.activeRoom;
@@ -188,8 +238,6 @@ namespace PiGSF.Server
             else
                 s += $"│  {"Not currently connected",-53} │\n";
             s += $"+========================================================+\n";
-
-
             Console.WriteLine(s);
         }
 

@@ -112,7 +112,7 @@ namespace PiGSF.Client
  
         public static int Main(string[] args)
         {
-            for (int i = 0; i < 15000; i++)
+            for (int i = 0; i < 20; i++)
             {
                 TCPTest(i.ToString(), (ConsoleColor)( (i + 6) % Enum.GetValues<ConsoleColor>().Length));
             }
