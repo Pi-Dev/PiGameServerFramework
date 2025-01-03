@@ -52,8 +52,8 @@ public static class ServerLogger
         {
             Console.Clear();
             if (currentOutputChannel is List<string> ss)
-                foreach (var s in ss)
-                    Console.Write(s);
+                lock (ss) foreach (var s in ss)
+                        Console.Write(s);
         }
     }
 
@@ -111,12 +111,12 @@ public static class ServerLogger
                         File.AppendAllText(io.fn, io.msg);
                         if (io.rl != null)
                         {
-                            io.rl.roomBuffer.Add(io.msg);
+                            lock (io.rl.roomBuffer) io.rl.roomBuffer.Add(io.msg);
                             if (currentOutputChannel == io.rl.roomBuffer) lock (Console.Out) Console.Write(io.msg);
                         }
                         else
                         {
-                            lastMessagesBuffer.Add(io.msg);
+                            lock (lastMessagesBuffer) lastMessagesBuffer.Add(io.msg);
                             if (currentOutputChannel == lastMessagesBuffer) lock (Console.Out) Console.Write(io.msg);
                         }
                     }
