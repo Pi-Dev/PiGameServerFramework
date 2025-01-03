@@ -9,6 +9,8 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <PackageIcon></PackageIcon>
     <ApplicationIcon>Resources\pi-server-icon.ico</ApplicationIcon>
+    <RootNamespace>PiGSF</RootNamespace>
+    <SignAssembly>False</SignAssembly>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +19,14 @@
 
   <ItemGroup>
     <None Include="..\.editorconfig" Link=".editorconfig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>

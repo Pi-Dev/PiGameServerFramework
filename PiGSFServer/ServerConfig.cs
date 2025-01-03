@@ -10,7 +10,7 @@ namespace PiGSF.Server
         public string team = "default";
         public string name = "Guest";
         public string username = "guest";
-        public int elo = 0;
+        // public int elo = 0; // Sample line
 
         public string ToTableString()
         {
@@ -33,12 +33,24 @@ namespace PiGSF.Server
                 { "DefaultRoomTimeout", "30" },
                 { "bindAddress", "0.0.0.0" },
                 { "bindPort", "12345" },
+                { "defaultRoom", "ChatRoom,Lobby" },
             };
 
             // parse config file
+            var configFile = "PIGSFServerConfig.cfg";
+            var fp = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/" + configFile;
+            try
+            {
+                var config = File.ReadAllLines(fp).Select(s => s.Split("=", StringSplitOptions.TrimEntries)).ToDictionary(x => x[0], x => x[1]);
+                foreach (var c in config) defaultConfig[c.Key] = c.Value;
+            }
+            catch (Exception ex)
+            {
+                ServerLogger.Log(ex.Message);
+            }
 
-            // Apply to instance
-            config = new ReadOnlyDictionary<string, string>(defaultConfig);
+            // Apply to the class
+            ServerConfig.config = new ReadOnlyDictionary<string, string>(defaultConfig);
         }
 
         // Packet size and format
@@ -48,16 +60,12 @@ namespace PiGSF.Server
 
         // Implementation details
         static ReadOnlyDictionary<string, string> config;
-        static string configFile = "config.cfg";
         public static string Get(string key, string defval = "") => config.GetValueOrDefault(key, defval);
 
         // Room configuration
 
         // Time to keep room if no players reconnect
         public static int DefaultRoomTimeout = 5;
-
-        // Default room to put new players in
-        public static Room defaultRoom => new Rooms.ChatRoom("Lobby");
 
         // Authentication modules by default
         public static IAuthProvider[] authProviders = [new JWTAuth(), new NoAuth()];

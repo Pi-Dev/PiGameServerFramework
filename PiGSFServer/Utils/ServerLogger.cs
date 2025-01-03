@@ -153,5 +153,6 @@ public static class ServerLogger
     {
         mustExit = true;
         loggerThread.Interrupt();
+        loggerThread.Join();
     }
 }

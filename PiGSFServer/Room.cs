@@ -138,7 +138,8 @@ namespace PiGSF.Server
                     message = "CRITICAL! THE DEFAULT ROOM CRASHED!";
                     ServerLogger.Log(message);
                     Log.Write(message);
-                    Server.defaultRoom = ServerConfig.defaultRoom;
+                    Server.defaultRoom = null;
+                    Server.CreateDefaultRoom();
                 }
                 Dispose();
             }

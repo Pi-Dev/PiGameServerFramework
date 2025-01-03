@@ -1,8 +1,16 @@
-﻿namespace PiGSF.Server
+﻿using System.Diagnostics;
+
+namespace PiGSF.Server
 {
     class ServerCLI
     {
-        static void Main(string[] args)
+        static StreamReader cin = new StreamReader(Console.OpenStandardInput());
+        static string ReadLine()
+        {
+            return cin!.ReadLineAsync()!.Result;
+        }
+
+        static int Main(string[] args)
         {
             Server server = null;
             ServerLogger.Log("Pi Game Server Framework by Pi-Dev");
@@ -13,15 +21,17 @@
             t.Name = "Server Thread";
             t.Start();
 
-            while (!server.IsActive()) Thread.Yield();
+            while (!server.IsActive()) Thread.Sleep(16);
             while (server!.IsActive())
             {
                 Console.Write("> ");
-                var input = Console.ReadLine(); // the wait place of main thread
+                var input = ReadLine();
                 server.HandleCommand(input);
             }
 
+            cin.Dispose();
             t.Join();
+            return 0;
         }
     }
 }

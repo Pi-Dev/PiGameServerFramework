@@ -1,6 +1,8 @@
 ﻿using Auth;
+using PiGSF.Rooms;
 using PiGSF.Utils;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace PiGSF.Server
 {
@@ -19,6 +21,7 @@ namespace PiGSF.Server
 
         ConcurrentList<ITransport> transports;
         public static Room? defaultRoom;
+        static List<Type> roomTypes;
 
         volatile bool _isActive;
         public bool IsActive() => _isActive;
@@ -213,8 +216,9 @@ namespace PiGSF.Server
 
             s += $"│  {$"",-53} │\n";
 
-            s += $"│  {$"Log file:  {r.Log._logFilePath}",-53} │\n";
             s += $"│  {$"Type `r {r.Id} to see room's log`",-53} │\n";
+            s += $"+========================================================+\n";
+            s += $"Log file: {r.Log._logFilePath}\n";
 
 
             Console.WriteLine(s);
@@ -241,12 +245,14 @@ namespace PiGSF.Server
             Console.WriteLine(s);
         }
 
+        Thread mainThread;
         public Server(int port)
         {
+            mainThread = Thread.CurrentThread;
             this.port = port;
             authenticator = new JWTAuth();
 
-            var transports = InitTransports();
+            List<Type> transports = InitTransports();
             this.transports = new();
             foreach (var t in transports)
             {
@@ -254,14 +260,30 @@ namespace PiGSF.Server
                 if (transport != null) this.transports.Add(transport);
             }
             InitAuthenticators();
-            InitRoomTypes();
+            roomTypes = InitRoomTypes();
+        }
 
-            defaultRoom = ServerConfig.defaultRoom;
+        internal static void CreateDefaultRoom()
+        {
+            if (defaultRoom != null) return; 
+            var tokens = ServerConfig.Get("defaultRoom").Split(",", StringSplitOptions.TrimEntries);
+            if (tokens.Length > 1)
+            {
+                List<Type> t = roomTypes.Where(x => x.Name.ToLower() == tokens[0].ToLower()).ToList();
+                if (t.Count > 0)
+                    defaultRoom = Activator.CreateInstance(t[0], tokens[1]) as Room;
+            }
+            if (defaultRoom == null) defaultRoom = new ChatRoom("Lobby");
+
         }
 
         // Running on Server Thread
         public void Start()
         {
+            // Init default room
+            CreateDefaultRoom();
+
+            // Transports
             transports.ForEach(x => x.Init(port, this));
             _isActive = true;
         }
@@ -308,6 +330,8 @@ namespace PiGSF.Server
             ServerLogger.Log("All rooms stopped. SHUTTING DOWN...");
             ServerLogger.Stop();
             _isActive = false;
+
+            Environment.Exit(0);
         }
 
         public async Task<Player?> AuthenticatePlayer(string connectionPayload)
