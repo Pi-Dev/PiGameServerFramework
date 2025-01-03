@@ -8,7 +8,6 @@ public class RoomLogger
     internal readonly List<string> roomBuffer = new();
     private const int maxLogLines = 1000;
     internal readonly string _logFilePath;
-    internal LogWindow? logWindow;
 
     public RoomLogger(Room room)
     {

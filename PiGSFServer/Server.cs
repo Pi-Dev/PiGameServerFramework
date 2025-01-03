@@ -1,14 +1,6 @@
 ﻿using Auth;
 using PiGSF.Utils;
-using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Numerics;
-using System.Runtime.Serialization;
-using Terminal.Gui;
-using Transport;
 
 namespace PiGSF.Server
 {
@@ -23,10 +15,13 @@ namespace PiGSF.Server
         ConcurrentDictionary<string, Player> knownPlayersByUid = new();
         internal ConcurrentList<Player> knownPlayers = new();
         public Player? GetPlayerByUid(string uid) => knownPlayersByUid!.GetValueOrDefault(uid, null) ?? null;
+        public Player? GetPlayerById(int id) => knownPlayers.FirstOrDefault(p => p.id == id, null);
 
         ConcurrentList<ITransport> transports;
         public static Room? defaultRoom;
-        TcpTransport TCP;
+
+        volatile bool _isActive;
+        public bool IsActive() => _isActive;
 
         List<Type> InitRoomTypes()
         {
@@ -64,21 +59,138 @@ namespace PiGSF.Server
             return ts;
         }
 
+        string RoomLogEntry(Room r)
+        {
+            var p = r.GetPlayersData();
+            return $" #{r.Id,-5} | {r.Name,-10} | ({p.connected}/{p.total}) | {r.GetType().Name}";
+        }
         internal void HandleCommand(string s)
         {
-            if (s == "stop")
+            s = s.ToLower();
+            if (s == "h" || s == "?" || s == "help")
+            {
+                lock (Console.Out)
+                {
+                    Console.WriteLine("""
+                        List of commands
+                        help, h, ?  => Displays this
+                        
+                        stop        => Stops the server
+                        keys        => Generates a RSA key pair
+
+                        players, p  => Lists all connected players
+                        p [id]      => Searches player by id
+                        ps [user]   => Searches player by username/name/uid
+                        
+                        rooms, r    => Displays list of all active rooms
+                        r [id/name] => Opens log for chosen room
+                        rs [name]   => Searches rooms by name (or shows named rooms)
+                        q, b, back  => Exits back to main log
+                        """);
+                }
+            }
+            else if (s == "stop")
             {
                 Stop();
             }
             else if (s == "keys")
             {
-                var keys = RSAEncryption.GenerateRSAKeyPairs(512);
-                ServerLogger.Log("");
-                ServerLogger.Log(keys.PrivateKey);
-                ServerLogger.Log("");
-                ServerLogger.Log(keys.PublicKey);
-                ServerLogger.Log("");
+                lock (Console.Out)
+                {
+                    var keys = RSAEncryption.GenerateRSAKeyPairs(512);
+                    Console.WriteLine("");
+                    Console.WriteLine(keys.PrivateKey);
+                    Console.WriteLine("");
+                    Console.WriteLine(keys.PublicKey);
+                    Console.WriteLine("");
+                }
             }
+            else if (s == "rooms" || s == "r")
+            {
+                lock (Console.Out)
+                    Room.rooms.ForEach(r =>
+                {
+                    Console.WriteLine(RoomLogEntry(r));
+                });
+            }
+            else if (s == "rs")
+            {
+                var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
+                var what = "";
+                if (tokens.Length > 0) what = tokens[1];
+                lock (Console.Out)
+                {
+                    Console.WriteLine(RoomLogEntry(defaultRoom));
+                    Room.rooms.ForEach(r =>
+                    {
+                        if (r.Name != "" && r.Name.Contains(what))
+                            Console.WriteLine(RoomLogEntry(r));
+                    });
+                }
+            }
+            else if (s.StartsWith("r ") || s.StartsWith("room "))
+            {
+                var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
+                if (tokens.Length > 1)
+                {
+                    //first try name search 
+                    var r = Room.GetByName(tokens[1]);
+                    if (r == null && int.TryParse(tokens[1], out int roomID)) r = Room.GetById(roomID);
+                    if (r == null) Console.WriteLine($"No room with id/name {tokens[1]} exists");
+                    else ServerLogger.SetOutputToRoom(r);
+                }
+            }
+            else if (s == "players" || s == "p")
+            {
+                lock (Console.Out)
+                    knownPlayers.ForEach(p =>
+                    {
+                        if (p.IsConnected())
+                            Console.WriteLine(p.ToTableString());
+                    });
+            }
+            else if (s.StartsWith("p "))
+            {
+                var tokens = s.Split(" ");
+                if (tokens.Length == 1) { HandleCommand("p"); return; }
+                if (int.TryParse(tokens[1], out int pid))
+                {
+                    lock (Console.Out)
+                    {
+                        var pl = GetPlayerById(pid);
+                        if (pl == null) Console.Write($"No player {pid} was seen on the server");
+                        else ShowPlayerInfo(pl);
+                    }
+                }
+            }
+            else if (s == "q" || s == "back" || s == "b")
+            {
+                ServerLogger.SetOutputToServer();
+            }
+        }
+
+        void ShowPlayerInfo(Player p)
+        {
+            string s =
+                 $"+================ PLAYER ID = {p.id,-5} =====================+\n";
+            s += $"│  UID:       {p.uid.PadRight(42)} │\n";
+            s += $"│  Username:  {p.username.PadRight(42)} │\n";
+            s += $"│  Name:      {p.name.PadRight(42)} │\n";
+            s += $"│                                                        │\n";
+            if (p.IsConnected())
+            {
+                var r = p.activeRoom;
+                if (r != null)
+                    s += $"│  {$"Active in {r.Name} {r.GetType().Name} [id={r.Id}] ",-53} │\n";
+                foreach (var rr in p.rooms) if (rr != p.activeRoom)
+                        s += $"│  {$" |- also in {rr.Name} {rr.GetType().Name} [id={rr.Id}] ",-53} │\n";
+            }
+            else
+                s += $"│  {"Not currently connected",-53} │\n";
+            s += $"+========================================================+\n";
+
+
+            Console.WriteLine(s);
         }
 
         public Server(int port)
@@ -103,6 +215,7 @@ namespace PiGSF.Server
         public void Start()
         {
             transports.ForEach(x => x.Init(port, this));
+            _isActive = true;
         }
 
         public async void Stop()
@@ -146,8 +259,7 @@ namespace PiGSF.Server
             }
             ServerLogger.Log("All rooms stopped. SHUTTING DOWN...");
             ServerLogger.Stop();
-            Application.RequestStop();
-            ServerLogger.Log("Application should be shutdown now!");
+            _isActive = false;
         }
 
         public async Task<Player?> AuthenticatePlayer(string connectionPayload)

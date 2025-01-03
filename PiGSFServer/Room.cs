@@ -1,13 +1,5 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using PiGSF.Server.TUI;
 using PiGSF.Utils;
 
 namespace PiGSF.Server
@@ -343,7 +335,7 @@ namespace PiGSF.Server
         // Rooms Database
         private static int NextRoomId = 1;
         public static ConcurrentList<Room> rooms = new();
-        static ConcurrentDictionary<string, Room> namedRooms = new();
+        internal static ConcurrentDictionary<string, Room> namedRooms = new();
         static ConcurrentDictionary<int, Room> roomsById = new();
 
         public static Room? GetById(int rid) => roomsById!.GetValueOrDefault(rid, null);

@@ -32,7 +32,31 @@ public static class ServerLogger
 
     private const int maxLogLines = 1000;
     private static readonly string _logFilePath;
-    internal static ServerLogView? logWindow;
+    //internal static ServerLogView? logWindow;
+
+    static object currentOutputChannel = lastMessagesBuffer;
+    public static void SetOutputToServer()
+    {
+        currentOutputChannel = lastMessagesBuffer;
+        RenderCurrentChannel();
+    }
+    public static void SetOutputToRoom(Room room)
+    {
+        currentOutputChannel = room.Log.roomBuffer;
+        RenderCurrentChannel();
+    }
+    static object renderLocker = new object();
+    static void RenderCurrentChannel()
+    {
+        lock (renderLocker)
+        {
+            Console.Clear();
+            if (currentOutputChannel is List<string> ss)
+                foreach (var s in ss)
+                    Console.Write(s);
+        }
+    }
+
 
     static Thread loggerThread;
     static ServerLogger()
@@ -88,18 +112,18 @@ public static class ServerLogger
                         if (io.rl != null)
                         {
                             io.rl.roomBuffer.Add(io.msg);
-                            io.rl.logWindow?.AddText(io.msg);
+                            if (currentOutputChannel == io.rl.roomBuffer) lock (Console.Out) Console.Write(io.msg);
                         }
                         else
                         {
                             lastMessagesBuffer.Add(io.msg);
-                            logWindow?.AddText(io.msg);
+                            if (currentOutputChannel == lastMessagesBuffer) lock (Console.Out) Console.Write(io.msg);
                         }
                     }
                 }
             }
         }
-        catch(ThreadInterruptedException) 
+        catch (ThreadInterruptedException)
         {
             if (mustExit) return;
         }
@@ -109,7 +133,7 @@ public static class ServerLogger
     {
         lock (messages)
         {
-            messages.Enqueue(new(){ message = message, sender = l, ts = DateTime.Now });
+            messages.Enqueue(new() { message = message, sender = l, ts = DateTime.Now });
             Monitor.Pulse(messages);
         }
     }
@@ -119,7 +143,7 @@ public static class ServerLogger
         string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}│ {message}";
         lock (messages)
         {
-            messages.Enqueue(new() { message = message, ts = DateTime.Now });
+            messages.Enqueue(new() { message = logEntry, ts = DateTime.Now });
             Monitor.Pulse(messages);
         }
     }
