@@ -39,6 +39,11 @@ namespace PiGSF.Rooms
             BroadcastMessage(Message.Create($"{sender.name}: {text}"), sender);
         }
 
+        protected override void OnServerCommand(string s)
+        {
+            BroadcastMessage(Message.Create(s));
+        }
+
         protected override void OnShutdownRequested()
         {
             base.OnShutdownRequested();

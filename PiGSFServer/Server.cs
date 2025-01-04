@@ -3,6 +3,7 @@ using PiGSF.Rooms;
 using PiGSF.Utils;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net.WebSockets;
 
 namespace PiGSF.Server
 {
@@ -18,6 +19,11 @@ namespace PiGSF.Server
         internal ConcurrentList<Player> knownPlayers = new();
         public Player? GetPlayerByUid(string uid) => knownPlayersByUid!.GetValueOrDefault(uid, null) ?? null;
         public Player? GetPlayerById(int id) => knownPlayers.FirstOrDefault(p => p.id == id, null);
+        public Player? GetPlayerById(string id)
+        {
+            if(int.TryParse(id, out int pid)) return GetPlayerById(pid);
+            return null;
+        }
 
         ConcurrentList<ITransport> transports;
         public static Room? defaultRoom;
@@ -67,9 +73,9 @@ namespace PiGSF.Server
             var p = r.GetPlayersData();
             return $" #{r.Id,-5} | {r.Name,-10} | ({p.connected}/{p.total}) | {r.GetType().Name}";
         }
-        internal void HandleCommand(string s)
+        internal void HandleCommand(string command)
         {
-            s = s.ToLower();
+            string s = command.ToLower();
             if (s == "h" || s == "?" || s == "help")
             {
                 lock (Console.Out)
@@ -77,6 +83,7 @@ namespace PiGSF.Server
                     Console.WriteLine("""
                         List of commands
                         help, h, ?  => Displays this
+                        f [text]    => Sets log message filter
                         
                         stop        => Stops the server
                         keys        => Generates a RSA key pair
@@ -86,12 +93,38 @@ namespace PiGSF.Server
                         ps [user]   => Searches player by username/name/uid
                         
                         rooms, r    => Displays list of all active rooms
-                        r [id/name] => Opens log for chosen room
-                        rp, ri [id] => Shows info for given room by id/name
+                        l [id/name] => Opens log for chosen room
+                        r [id]      => Shows info for given room by id/name
                         rs [name]   => Searches rooms by name (or shows named rooms)
                         q, b, back  => Exits back to main log
                         """);
                 }
+            }
+            else if (s == "")
+            {
+                var room = ServerLogger.currentRoomChannel;
+                if (room != null)
+                {
+                    var pd = room.GetPlayersData();
+                    lock (Console.Out)
+                    {
+                        Console.WriteLine($"Status: {room.Status}");
+                        Console.WriteLine($"Players (Current/Max/Seen): ({pd.connected}/{room.MaxPlayers}/{pd.total})");
+                        Console.WriteLine($"Vars: minP={room.MinPlayers} maxP={room.MaxPlayers} stared={room.IsStarted} TR={room.TickRate}");
+                    }
+                }
+                else
+                {
+                    int c = 0; knownPlayers.ForEach(p => { if (p.IsConnected()) c++; });
+                    lock (Console.Out)
+                        Console.WriteLine($"Players: {c}/{knownPlayers.Count}; Rooms: {Room.rooms.Count}");
+                }
+            }
+            else if (s == "f") ServerLogger.SetFilter("");
+            else if (s.StartsWith("f "))
+            {
+                string filter = s.Substring(2);
+                ServerLogger.SetFilter(filter);
             }
             else if (s == "stop")
             {
@@ -111,28 +144,28 @@ namespace PiGSF.Server
             }
             else if (s == "rooms" || s == "r")
             {
-                lock (Console.Out)
-                    Room.rooms.ForEach(r =>
-                {
-                    Console.WriteLine(RoomLogEntry(r));
-                });
+                string str = "";
+                Room.rooms.ForEach(r =>
+            {
+                str += RoomLogEntry(r) + "\n";
+            });
+                lock (Console.Out) Console.WriteLine(str);
             }
             else if (s == "rs")
             {
                 var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
-                var what = "";
+                string str = "";
+                string what = "";
                 if (tokens.Length > 0) what = tokens[1];
-                lock (Console.Out)
+                str += RoomLogEntry(defaultRoom) + "\n";
+                Room.rooms.ForEach(r =>
                 {
-                    Console.WriteLine(RoomLogEntry(defaultRoom));
-                    Room.rooms.ForEach(r =>
-                    {
-                        if (r.Name != "" && r.Name.Contains(what))
-                            Console.WriteLine(RoomLogEntry(r));
-                    });
-                }
+                    if (r.Name != "" && r.Name.Contains(what))
+                        str += RoomLogEntry(r) + "\n";
+                });
+                lock (Console.Out) Console.WriteLine(str);
             }
-            else if (s.StartsWith("r ") || s.StartsWith("room "))
+            else if (s.StartsWith("l "))
             {
                 var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
                 if (tokens.Length > 1)
@@ -143,7 +176,7 @@ namespace PiGSF.Server
                     else ServerLogger.SetOutputToRoom(r);
                 }
             }
-            else if (s.StartsWith("rp ") || s.StartsWith("ri "))
+            else if (s.StartsWith("r "))
             {
                 var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
                 if (tokens.Length > 1)
@@ -156,37 +189,57 @@ namespace PiGSF.Server
             }
             else if (s == "players" || s == "p")
             {
-                lock (Console.Out)
-                    knownPlayers.ForEach(p =>
-                    {
-                        if (p.IsConnected())
-                            Console.WriteLine(p.ToTableString());
-                    });
+                string str = "";
+                knownPlayers.ForEach(p => { if (p.IsConnected()) str += p.ToTableString() + "\n"; });
+                Console.WriteLine(str.Length > 0 ? str : "No players connected");
             }
             else if (s.StartsWith("p "))
             {
+                string str = "";
                 var tokens = s.Split(" ");
                 if (tokens.Length == 1) { HandleCommand("p"); return; }
                 if (int.TryParse(tokens[1], out int pid))
                 {
-                    lock (Console.Out)
-                    {
-                        var pl = GetPlayerById(pid);
-                        if (pl == null) Console.Write($"No player {pid} was seen on the server");
-                        else ShowPlayerInfo(pl);
-                    }
+                    var pl = GetPlayerById(pid);
+                    if (pl == null) Console.Write($"No player {pid} was seen on the server");
+                    else ShowPlayerInfo(pl);
                 }
             }
             else if (s == "q" || s == "back" || s == "b")
             {
                 ServerLogger.SetOutputToServer();
             }
+            // Add other SERVER commands here
+            else
+            {
+                // ROOM commands
+                Room r = ServerLogger.currentRoomChannel;
+                if (r != null)
+                {
+                    if(s.StartsWith("kick "))
+                    {
+                        var tokens = s.Split(' ');
+                        if (tokens.Length == 1) return;
+                        var p = GetPlayerById(tokens[1]);
+                        r.KickPlayer(p);
+                    }
+                    else if(s.StartsWith("ban "))
+                    {
+                        var tokens = s.Split(' ');
+                        if (tokens.Length == 1) return;
+                        var p = GetPlayerById(tokens[1]);
+                        r.BanPlayer(p);
+                    }
+                    r.messageQueue.Enqueue(new Room.ServerCommand { command = command });
+                }
+                else HandleCommand("?");
+            }
         }
 
         void ShowRoomInfo(Room r)
         {
             List<Player> Connected = new(), Tracked = new();
-            r._ConnectedPlayers.ForEach(x => (x.IsConnected() ? Connected : Tracked).Add(x));
+            r.players.ForEach(x => (x.IsConnected() ? Connected : Tracked).Add(x));
             string s =
                  $"+================= ROOM ID = {r.Id,-5} ======================+\n";
             s += $"│  {$"ID: {r.Id} - NAME: {r.Name} - ROOM TYPE: {r.GetType().Name}",-53} │\n";
@@ -200,7 +253,7 @@ namespace PiGSF.Server
                 var p1 = Connected[i];
                 var p2 = (i + 1 < Connected.Count) ? Connected[i + 1] : null;
                 s += $"│  {$" #{p1.id} {p1.username}  ({p1.name})",-26}" +
-                     (p2 != null ? $" {$" #{p2.id} {p2.username} ({p2.name})",-26}" : "".PadLeft(26)) + " │\n";
+                     (p2 != null ? $" {$" #{p2.id} {p2.username} ({p2.name})",-26}" : " ".PadLeft(27)) + " │\n";
             }
 
             s += $"│  {$"",-53} │\n";
@@ -211,7 +264,7 @@ namespace PiGSF.Server
                 var p1 = Tracked[i];
                 var p2 = (i + 1 < Tracked.Count) ? Tracked[i + 1] : null;
                 s += $"│  {$" #{p1.id} {p1.username}  ({p1.name})",-26}" +
-                     (p2 != null ? $" {$" #{p2.id} {p2.username} ({p2.name})",-26}" : "".PadLeft(26)) + " │\n";
+                     (p2 != null ? $" {$" #{p2.id} {p2.username} ({p2.name})",-26}" : " ".PadLeft(27)) + " │\n";
             }
 
             s += $"│  {$"",-53} │\n";
@@ -220,8 +273,7 @@ namespace PiGSF.Server
             s += $"+========================================================+\n";
             s += $"Log file: {r.Log._logFilePath}\n";
 
-
-            Console.WriteLine(s);
+            lock (Console.Out) Console.WriteLine(s);
         }
         void ShowPlayerInfo(Player p)
         {
@@ -242,7 +294,7 @@ namespace PiGSF.Server
             else
                 s += $"│  {"Not currently connected",-53} │\n";
             s += $"+========================================================+\n";
-            Console.WriteLine(s);
+            lock (Console.Out) Console.WriteLine(s);
         }
 
         Thread mainThread;
@@ -265,7 +317,7 @@ namespace PiGSF.Server
 
         internal static void CreateDefaultRoom()
         {
-            if (defaultRoom != null) return; 
+            if (defaultRoom != null) return;
             var tokens = ServerConfig.Get("defaultRoom").Split(",", StringSplitOptions.TrimEntries);
             if (tokens.Length > 1)
             {

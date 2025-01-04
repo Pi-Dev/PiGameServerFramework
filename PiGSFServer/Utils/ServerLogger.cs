@@ -34,29 +34,36 @@ public static class ServerLogger
     private static readonly string _logFilePath;
     //internal static ServerLogView? logWindow;
 
+    public static Room? currentRoomChannel { get; private set; }
     static object currentOutputChannel = lastMessagesBuffer;
     public static void SetOutputToServer()
     {
+        currentRoomChannel = null;
         currentOutputChannel = lastMessagesBuffer;
         RenderCurrentChannel();
     }
     public static void SetOutputToRoom(Room room)
     {
+        currentRoomChannel = room;
         currentOutputChannel = room.Log.roomBuffer;
         RenderCurrentChannel();
     }
     static object renderLocker = new object();
     static void RenderCurrentChannel()
     {
+        var sb = new StringBuilder();
+        if (currentOutputChannel is List<string> ss)
+            lock (ss)
+                foreach (var s in ss)
+                    if (filter == "" || (filter != "" && s.ToLower().Contains(filter.ToLower())))
+                        sb.Append(s);
+
         lock (renderLocker)
         {
             Console.Clear();
-            if (currentOutputChannel is List<string> ss)
-                lock (ss) foreach (var s in ss)
-                        Console.Write(s);
+            Console.Write(sb);
         }
     }
-
 
     static Thread loggerThread;
     static ServerLogger()
@@ -112,12 +119,16 @@ public static class ServerLogger
                         if (io.rl != null)
                         {
                             lock (io.rl.roomBuffer) io.rl.roomBuffer.Add(io.msg);
-                            if (currentOutputChannel == io.rl.roomBuffer) lock (Console.Out) Console.Write(io.msg);
+                            if (filter == "" || (filter != "" && io.msg.ToLower().Contains(filter.ToLower())))
+                                if (currentOutputChannel == io.rl.roomBuffer)
+                                    lock (Console.Out) Console.Write(io.msg);
                         }
                         else
                         {
                             lock (lastMessagesBuffer) lastMessagesBuffer.Add(io.msg);
-                            if (currentOutputChannel == lastMessagesBuffer) lock (Console.Out) Console.Write(io.msg);
+                            if (filter == "" || (filter != "" && io.msg.Contains(filter)))
+                                if (currentOutputChannel == lastMessagesBuffer)
+                                    lock (Console.Out) Console.Write(io.msg);
                         }
                     }
                 }
@@ -154,5 +165,12 @@ public static class ServerLogger
         mustExit = true;
         loggerThread.Interrupt();
         loggerThread.Join();
+    }
+
+    static string filter = "";
+    public static void SetFilter(string s)
+    {
+        filter = s;
+        RenderCurrentChannel();
     }
 }

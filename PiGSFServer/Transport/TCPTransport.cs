@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -43,7 +44,7 @@ namespace Transport
             }
             catch { };
             if (!stopAccepting) listener.BeginAcceptTcpClient(OnAcceptConcurrent, null);
-            else return;
+            else return; //stopAccepting
 
             if (client != null)
             {
@@ -53,9 +54,16 @@ namespace Transport
             }
         }
 
+        static int CC = 0;
         // Thread: Started from OnAcceptConcurrent
         void OnClientConnected(TcpClient client)
         {
+            int cid = CC++;
+            ServerLogger.Log($"[{cid}] Connected");
+            bool error = true;
+            var sd = new Stopwatch();
+            sd.Start();
+
             client.NoDelay = true;
             var hdrb = headerBuffers.Buy();
             (byte[] bytes, Action Dispose)? packet = null;
@@ -63,17 +71,21 @@ namespace Transport
             try
             {
                 var stream = client.GetStream();
+                stream.ReadTimeout = 2000; // set 2s read timeout for initial packet
                 stream.ReadExactly(hdrb, 0, (int)ServerConfig.HeaderSize);
+                ServerLogger.Log($"[{cid}] Header T={sd.ElapsedMilliseconds}ms");
+
                 int size = BitConverter.ToInt16(hdrb, 0);
 
                 // Avoid DDOS attackers, limit first pack to small size
                 if (size < 0 || size > ServerConfig.MaxInitialPacketSize)
                 {
-                    ServerLogger.Log($"ERROR: Client sending negative or too big header. Disconnecting");
-                    client.Close(); return;
+                    ServerLogger.Log($"[{cid}] ERROR: Client sending negative or too big header. T={sd.ElapsedMilliseconds}ms");
+                    client.Close(); client.Dispose(); return;
                 }
 
                 packet = GetPacketBuffer(size);
+                stream.ReadTimeout = 150; // set 150 ms for message payload timeout 
                 stream.ReadExactly(packet.Value.bytes, 0, size);
 
                 data = Encoding.UTF8.GetString(packet.Value.bytes, 0, size);
@@ -83,7 +95,7 @@ namespace Transport
                 if (player == null)
                 {
                     ServerLogger.Log($"ERROR: Client Unauthorized");
-                    client.Close(); return;
+                    client.Close(); client.Dispose(); return;
                 }
 
                 // Player is connected, create the API and give response
@@ -113,17 +125,31 @@ namespace Transport
                 sender.Name = $"{player.id} ({player.username}): TCP Send";
                 sender.Start();
 
+                // Start the Receiver thread
+                var receiver = new Thread(()=>ReceiveLoop(client, player));
+                receiver.Name = $"{player.id} ({player.username}): TCP Recv";
+                receiver.Start();
+
                 // Repurpose current thread as Receiver Thread
-                Thread.CurrentThread.Name = $"{player.id} ({player.username}): TCP Recv";
-                ReceiveLoop(client, player);
+                // Thread.CurrentThread.Name = $"{player.id} ({player.username}): TCP Recv";
+                // ReceiveLoop(client, player);
+                error = false;
+                ServerLogger.Log($"[{cid}] Done, T={sd.ElapsedMilliseconds}ms");
+
+                sender.Join();
+                receiver.Join();
+                ServerLogger.Log($"[{cid}] Client Cleanup, T={sd.ElapsedMilliseconds}ms");
             }
             catch (IOException ex) { }
             catch (Exception ex)
             {
                 client.Close();
+                client.Dispose();
             }
             finally
             {
+                sd.Stop();
+                ServerLogger.Log($"[{cid}] {(error?"ERROR":"Done")} [at finally], T={sd.ElapsedMilliseconds}ms");
                 headerBuffers.Recycle(hdrb);
                 if (packet.HasValue) packet.Value.Dispose();
             }
@@ -139,6 +165,7 @@ namespace Transport
                 while (client.Connected)
                 {
                     var hdrb = abs.Rent(sz);
+                    stream.ReadTimeout = 120 * 1000; // orphan players that do nothing for 2m?
                     stream.ReadExactly(hdrb, 0, sz); // good wait place!
                     int size = sz switch
                     {
@@ -151,6 +178,7 @@ namespace Transport
                     if (size > 0)
                     {
                         byte[] buffer = new byte[size];
+                        stream.ReadTimeout = 3000; // set for message payload timeout 
                         stream.ReadExactly(buffer, 0, size);
 
                         // Deliver the message to all rooms where player is connected
@@ -164,7 +192,7 @@ namespace Transport
 
                 }
             }
-            catch (IOException ex) { client.Close(); }
+            catch (IOException ex) { client.Close(); client.Dispose(); }
             catch (Exception e)
             {
                 ServerLogger.Log(e.Message);
@@ -190,6 +218,7 @@ namespace Transport
                     foreach (var msg in msgs) stream.Write(msg);
                 }
             }
+            catch (IOException e) { client.Close(); client.Dispose(); }
             catch (Exception e)
             {
                 ServerLogger.Log(e.Message);

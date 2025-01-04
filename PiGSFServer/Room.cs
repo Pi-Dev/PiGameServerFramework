@@ -25,15 +25,15 @@ namespace PiGSF.Server
         public int PlayerDisbandTimeout = -1;
 
         // Connected players and banned players
-        internal protected ConcurrentList<Player> _ConnectedPlayers = new();
+        internal protected ConcurrentList<Player> players = new();
         protected ConcurrentBag<string> BannedPlayerUids = new();
         public (int connected, int total) GetPlayersData()
         {
-            lock (_ConnectedPlayers)
+            lock (players)
             {
                 int connected = 0;
-                foreach (Player player in _ConnectedPlayers) if (player.IsConnected()) connected++;
-                return (connected, _ConnectedPlayers.Count);
+                foreach (Player player in players) if (player.IsConnected()) connected++;
+                return (connected, players.Count);
             }
         }
 
@@ -45,6 +45,7 @@ namespace PiGSF.Server
         internal class RoomStopEvent : IRoomEvent { }
         internal class RoomStartEvent : IRoomEvent { }
         internal class ShutdownRequest : IRoomEvent { }
+        internal class ServerCommand : IRoomEvent { public string command=""; }
         internal ConcurrentQueue<IRoomEvent> messageQueue = new();
 
         private volatile bool _isStarted = false;
@@ -75,6 +76,8 @@ namespace PiGSF.Server
                     Start();
                 }
             }
+            else if (item is ServerCommand sc)
+                OnServerCommand(sc.command);
             else if (item is ShutdownRequest)
                 OnShutdownRequested();
             else if (item is RoomStopEvent)
@@ -198,7 +201,10 @@ namespace PiGSF.Server
             Debug.Assert(Thread.CurrentThread.ManagedThreadId == roomThreadId);
         }
 
-
+        protected virtual void OnServerCommand(string s)
+        {
+            Debug.Assert(Thread.CurrentThread.ManagedThreadId == roomThreadId);
+        }
         // Room API
 
         /// Thread-safe
@@ -211,7 +217,7 @@ namespace PiGSF.Server
         public void BroadcastMessage(byte[] data, Player? sender = null)
         {
             Debug.Assert(Thread.CurrentThread.ManagedThreadId == roomThreadId);
-            _ConnectedPlayers.ForEach(p => { if (sender == null || p != sender) p.Send(data); });
+            players.ForEach(p => { if (sender == null || p != sender) p.Send(data); });
         }
 
         /// Thread-safe
@@ -223,7 +229,12 @@ namespace PiGSF.Server
         // Thread safe!!
         public void KickPlayer(Player player)
         {
-            DisconnectPlayer(player, true);
+            if(this == Server.defaultRoom)
+                DisconnectPlayer(player, true);
+            else
+            {
+                player.TransferToDefaultLobby();
+            }
         }
 
         // Thread safe!!
@@ -247,12 +258,12 @@ namespace PiGSF.Server
                 Log.Write($"Player {player.name} is banned from Room {Name}.");
                 return false;
             }
-            if (!AllowPlayers && !_ConnectedPlayers.Contains(player))
+            if (!AllowPlayers && !players.Contains(player))
             {
                 Log.Write($"Room {Name} is not accepting new players.");
                 return false;
             }
-            if (_ConnectedPlayers.Count >= MaxPlayers)
+            if (players.Count >= MaxPlayers)
             {
                 Log.Write($"Room {Name} is full. Player {player.name} cannot join.");
                 return false;
@@ -265,7 +276,7 @@ namespace PiGSF.Server
 
             bool isReconnect = false;
 
-            if (!_ConnectedPlayers.AddIfNotExists(player)) isReconnect = true;
+            if (!players.AddIfNotExists(player)) isReconnect = true;
 
             // This must be interlocked
             if (Interlocked.CompareExchange(ref _firstPlayerConnected, 1, 0) == 0)
@@ -276,7 +287,7 @@ namespace PiGSF.Server
             messageQueue.EnqueueAndNotify(new RoomEvent(() => { OnPlayerConnected(player, isNew: !isReconnect); }));
 
             // Check if game should start
-            if (!_isStarted && (!WaitForMinPlayers || _ConnectedPlayers.Count >= MinPlayers))
+            if (!_isStarted && (!WaitForMinPlayers || players.Count >= MinPlayers))
                 messageQueue.EnqueueAndNotify(new RoomStartEvent());
 
             return true;
@@ -289,9 +300,9 @@ namespace PiGSF.Server
         /// <param name="player"></param>
         public void RemovePlayer(Player player)
         {
-            if (!_ConnectedPlayers.Contains(player)) return; // Deadlock
+            if (!players.Contains(player)) return; // Deadlock
 
-            _ConnectedPlayers.Remove(player);
+            players.Remove(player);
             messageQueue.EnqueueAndNotify(new RoomEvent(() =>
             {
                 OnPlayerDisconnected(player, disband: true);
@@ -350,7 +361,7 @@ namespace PiGSF.Server
         public static List<Room> FindAllWithPlayer(Player p)
         {
             var res = new List<Room>();
-            rooms.ForEach(r => { if (r._ConnectedPlayers.Contains(p)) res.Add(r); });
+            rooms.ForEach(r => { if (r.players.Contains(p)) res.Add(r); });
             return res;
         }
 
@@ -364,7 +375,7 @@ namespace PiGSF.Server
                 if(this == Server.defaultRoom) Server.defaultRoom = null;
 
                 // Remove this room from all referenced player
-                _ConnectedPlayers.ForEach(p =>
+                players.ForEach(p =>
                 {
                     p.rooms.Remove(this);
                     if (p.activeRoom == this) p.activeRoom = null;

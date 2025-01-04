@@ -24,7 +24,21 @@ namespace PiGSF.Server
             while (!server.IsActive()) Thread.Sleep(16);
             while (server!.IsActive())
             {
-                Console.Write("> ");
+                int current = 0, total = 0; 
+                string prefix;
+                var r = ServerLogger.currentRoomChannel;
+                if (r == null)
+                {
+                    prefix = "[Server]";
+                    server.knownPlayers.ForEach(p => { if (p.IsConnected()) current++; total++; });
+                }
+                else
+                {
+                    prefix = $"[{r.GetType().Name}:{r.Id}]";
+                    prefix += $"[{r.Name}]";
+                    r.players.ForEach(p => { if (p.IsConnected()) current++; total++; });
+                }
+                Console.Write($"{prefix}({current}/{total})> ");
                 var input = ReadLine();
                 server.HandleCommand(input);
             }

@@ -31,14 +31,18 @@ namespace PiGSF.Server
         }
 
         // This disbands the player from current active room and joins him to the new room
-        public void TransferToRoom(Room? destination)
+        public void TransferToRoom(Room? destination, bool disband = false)
         {
             if (activeRoom != destination)
             {
                 _rooms = null;
-                activeRoom?.RemovePlayer(this);
+                if (disband) activeRoom?.RemovePlayer(this);
                 if (destination != null)
-                    destination.AddPlayer(this);
+                {
+                    if (!destination.AddPlayer(this))
+                        if (activeRoom == Server.defaultRoom) Disconnect();
+                        else TransferToDefaultLobby();
+                }
                 else Disconnect();
             }
         }
