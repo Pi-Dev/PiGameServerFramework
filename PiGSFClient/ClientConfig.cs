@@ -10,10 +10,8 @@ namespace PiGSF.Client
 {
     public static class ClientConfig
     {
-        public static IPAddress serverAddress = IPAddress.Loopback; //IPAddress.Parse("18.198.114.235");
-        public static int serverPort = 275; //27015;
-        //public static IPAddress serverAddress = IPAddress.Parse("18.198.114.235");
-        //public static int serverPort = 27015;
+        public static string serverAddress = "127.0.0.1";
+        public static int serverPort = 27015;
 
         // Server config
         public static int HeaderSize = 2;
