@@ -1,11 +1,14 @@
 ﻿using Microsoft.VisualBasic;
+using PiGSF.Client.Utils;
 using PiGSF.Utils;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -109,19 +112,29 @@ namespace PiGSF.Client
 
     public class ClientCLI
     {
- 
+        public class ClientState
+        {
+            public Task task;
+        }
+
         public static int Main(string[] args)
         {
-            for (int i = 0; i < 200; i++)
+            int ntests = 1;
+            for (int i = 0; i < ntests; i++)
             {
-                TCPTest(i.ToString(), (ConsoleColor)( (i + 6) % Enum.GetValues<ConsoleColor>().Length));
+                TCPTest(i.ToString(), (ConsoleColor)((i + 6) % Enum.GetValues<ConsoleColor>().Length));
             }
 
-            while (true)
-            {
-                var key = Console.ReadLine();
-                Log.SetFilter("[" + key);
-            }
+            // filter
+            //if (ntests > 1)
+            //{
+            //    while (true)
+            //    {
+            //        var key = Console.ReadLine();
+            //        Log.SetFilter("[" + key);
+            //    }
+            //}
+            return 0;
         }
 
         static async Task TCPTest(string username, ConsoleColor color)
@@ -150,24 +163,27 @@ namespace PiGSF.Client
             // Message Pump Thread
             var mpt = new Thread(() =>
             {
-                List<byte[]> messages;
-                lock (client.messages)
+                while (client.isConnected)
                 {
-                    if(client.messages.Count == 0) Monitor.Wait(client.messages);
-                    messages = client.GetMessages();
+                    List<byte[]> messages;
+                    lock (client.messages)
+                    {
+                        if (client.messages.Count == 0) Monitor.Wait(client.messages);
+                        messages = client.GetMessages();
+                    }
+                    foreach (var m in messages)
+                        Log.Write($"[{username}] RECV: {Encoding.UTF8.GetString(m).Substring(1)}", color);
                 }
-                foreach(var m in messages)
-                    Log.Write($"[{username}] RECV: {Encoding.UTF8.GetString(m).Substring(1)}", color);
             });
             mpt.Name = $"MPT for [{username}]";
             mpt.Start();
 
-            // Start main client loop
-            // while (true)
-            // {
-            //     string? input = Console.ReadLine();
-            //     client.SendString(input);
-            // }
+            //Start main client loop
+            //while (true)
+            //{
+            //    string? input = Console.ReadLine();
+            //    client.SendString(input);
+            //}
         }
     }
 }

@@ -223,13 +223,15 @@ namespace PiGSF.Server
         /// Thread-safe
         public void DisconnectPlayer(Player player, bool disband = false)
         {
+            if (player == null) return;
             player.Disconnect(disband);
         }
 
         // Thread safe!!
         public void KickPlayer(Player player)
         {
-            if(this == Server.defaultRoom)
+            if (player == null) return;
+            if (this == Server.defaultRoom)
                 DisconnectPlayer(player, true);
             else
             {
@@ -240,6 +242,7 @@ namespace PiGSF.Server
         // Thread safe!!
         public void BanPlayer(Player player)
         {
+            if (player == null) return;
             KickPlayer(player);
             if (!BannedPlayerUids.Contains(player.uid)) BannedPlayerUids.Add(player.uid);
         }
