@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace PiGSF.Server
 {
     public interface ITransport {
-        public void Init(int port, Server serverRef);
+        public void Init(int port);
         public void Stop();
         public void StopAccepting();
     }

@@ -21,6 +21,8 @@ namespace PiGSF.Server
                 // /* name */ name.PadRight(32) + " | " +
                 /* uid */ uid.PadRight(48) + " |";
         }
+
+        public override string? ToString() => $"[{id}] {name} = {uid}";
     }
 
     public static class ServerConfig
@@ -54,13 +56,19 @@ namespace PiGSF.Server
         }
 
         // Packet size and format
-        public static uint HeaderSize = 2;
-        public static uint PolledBuffersSize = 1024; // by default 1k
-        public static uint MaxInitialPacketSize = 4 * 1024; // by default 4k for JWT payload
+        public static int HeaderSize = 2;
+        public static int PolledBuffersSize = 1024; // by default 1k
+        public static int MaxInitialPacketSize = 4 * 1024; // by default 4k for JWT payload
 
         // Implementation details
         static ReadOnlyDictionary<string, string> config;
         public static string Get(string key, string defval = "") => config.GetValueOrDefault(key, defval);
+        public static int GetInt(string key, int defval = 0)
+        {
+            var str = config.GetValueOrDefault(key, defval.ToString());
+            if (int.TryParse(str, out int val)) return val;
+            return defval;
+        }
 
         // Room configuration
 

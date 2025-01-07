@@ -8,31 +8,31 @@ using System.Net.WebSockets;
 namespace PiGSF.Server
 {
     // Main server logic
-    public class Server
+    public static class Server
     {
-        private readonly int port;
-        private int NextPlayerId = 1;
-        public IAuthProvider authenticator;
+        static int port;
+        static int NextPlayerId = 1;
+        public static IAuthProvider authenticator;
 
         // Player Database
-        ConcurrentDictionary<string, Player> knownPlayersByUid = new();
-        internal ConcurrentList<Player> knownPlayers = new();
-        public Player? GetPlayerByUid(string uid) => knownPlayersByUid!.GetValueOrDefault(uid, null) ?? null;
-        public Player? GetPlayerById(int id) => knownPlayers.FirstOrDefault(p => p.id == id, null);
-        public Player? GetPlayerById(string id)
+        static ConcurrentDictionary<string, Player> knownPlayersByUid = new();
+        static internal ConcurrentList<Player> knownPlayers = new();
+        public static Player? GetPlayerByUid(string uid) => knownPlayersByUid!.GetValueOrDefault(uid, null) ?? null;
+        public static Player? GetPlayerById(int id) => knownPlayers.FirstOrDefault(p => p.id == id, null);
+        public static Player? GetPlayerById(string id)
         {
             if(int.TryParse(id, out int pid)) return GetPlayerById(pid);
             return null;
         }
 
-        ConcurrentList<ITransport> transports;
+        static ConcurrentList<ITransport> transports;
         public static Room? defaultRoom;
         static List<Type> roomTypes;
 
-        volatile bool _isActive;
-        public bool IsActive() => _isActive;
+        static volatile bool _isActive = false;
+        public static bool IsActive() => _isActive;
 
-        List<Type> InitRoomTypes()
+        static List<Type> InitRoomTypes()
         {
             ServerLogger.Log("[===== Room Types =====]");
             var ts = TypeLoader.GetSubclassesOf<Room>();
@@ -44,7 +44,7 @@ namespace PiGSF.Server
             return ts;
         }
 
-        List<Type> InitTransports()
+        static List<Type> InitTransports()
         {
             ServerLogger.Log("[===== Transports =====]");
             var ts = TypeLoader.GetTypesImplementing<ITransport>();
@@ -56,7 +56,7 @@ namespace PiGSF.Server
             return ts;
         }
 
-        List<Type> InitAuthenticators()
+        static List<Type> InitAuthenticators()
         {
             ServerLogger.Log("[=== Authenticators ===]");
             var ts = TypeLoader.GetTypesImplementing<IAuthProvider>();
@@ -68,12 +68,12 @@ namespace PiGSF.Server
             return ts;
         }
 
-        string RoomLogEntry(Room r)
+        static string RoomLogEntry(Room r)
         {
             var p = r.GetPlayersData();
             return $" #{r.Id,-5} | {r.Name,-10} | ({p.connected}/{p.total}) | {r.GetType().Name}";
         }
-        internal void HandleCommand(string command)
+        internal static void HandleCommand(string command)
         {
             string s = command.ToLower();
             if (s == "h" || s == "?" || s == "help")
@@ -128,7 +128,7 @@ namespace PiGSF.Server
             }
             else if (s == "stop")
             {
-                Stop();
+                Server.Stop();
             }
             else if (s == "keys")
             {
@@ -236,7 +236,7 @@ namespace PiGSF.Server
             }
         }
 
-        void ShowRoomInfo(Room r)
+        static void ShowRoomInfo(Room r)
         {
             List<Player> Connected = new(), Tracked = new();
             r.players.ForEach(x => (x.IsConnected() ? Connected : Tracked).Add(x));
@@ -275,7 +275,7 @@ namespace PiGSF.Server
 
             lock (Console.Out) Console.WriteLine(s);
         }
-        void ShowPlayerInfo(Player p)
+        static void ShowPlayerInfo(Player p)
         {
             string s =
                  $"+================ PLAYER ID = {p.id,-5} =====================+\n";
@@ -297,22 +297,32 @@ namespace PiGSF.Server
             lock (Console.Out) Console.WriteLine(s);
         }
 
-        Thread mainThread;
-        public Server(int port)
+        static Thread mainThread;
+
+        // Must run on separate thread
+        static public void Start(int port)
         {
             mainThread = Thread.CurrentThread;
-            this.port = port;
+            Server.port = port;
             authenticator = new JWTAuth();
 
             List<Type> transports = InitTransports();
-            this.transports = new();
+            Server.transports = new();
             foreach (var t in transports)
             {
                 var transport = Activator.CreateInstance(t) as ITransport;
-                if (transport != null) this.transports.Add(transport);
+                if (transport != null) Server.transports.Add(transport);
             }
+
             InitAuthenticators();
             roomTypes = InitRoomTypes();
+
+            // Init default room
+            CreateDefaultRoom();
+
+            // Transports
+            Server.transports.ForEach(x => x.Init(port));
+            _isActive = true;
         }
 
         internal static void CreateDefaultRoom()
@@ -326,22 +336,12 @@ namespace PiGSF.Server
                     defaultRoom = Activator.CreateInstance(t[0], tokens[1]) as Room;
             }
             if (defaultRoom == null) defaultRoom = new ChatRoom("Lobby");
-
         }
 
-        // Running on Server Thread
-        public void Start()
+        internal static volatile bool ServerStopRequested = false;
+        public static async void Stop()
         {
-            // Init default room
-            CreateDefaultRoom();
-
-            // Transports
-            transports.ForEach(x => x.Init(port, this));
-            _isActive = true;
-        }
-
-        public async void Stop()
-        {
+            ServerStopRequested = true;
             // Terminate listeners
             try
             {
@@ -386,7 +386,7 @@ namespace PiGSF.Server
             Environment.Exit(0);
         }
 
-        public async Task<Player?> AuthenticatePlayer(string connectionPayload)
+        public static async Task<Player?> AuthenticatePlayer(string connectionPayload)
         {
             PlayerData? pd = null;
             foreach (var a in ServerConfig.authProviders) // concurrent reading!

@@ -1,15 +1,11 @@
-﻿using System;
-using System.Buffers;
+﻿using System.Buffers;
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
-using System.Globalization;
-using System.IO;
 using System.Net;
-using System.Net.Quic;
 using System.Net.Sockets;
-using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading.Tasks;
 using PiGSF.Server;
 using PiGSF.Server.Utils;
 using PiGSF.Utils;
@@ -18,245 +14,298 @@ namespace Transport
 {
     public class TcpTransport : ITransport
     {
-        Server server;
-
-        // Static buffer for header parsing and pool of buffers for message data
-        ObjectPooler<byte[]> headerBuffers = new(() => new byte[ServerConfig.HeaderSize]);
-        ObjectPooler<byte[]> messageBuffers = new(() => new byte[1024]);
         TcpListener listener;
+        List<TCPSocketWorker> workers = new();
+
+        class ClientState
+        {
+            internal ClientState(TcpClient c, TCPSocketWorker w)
+            {
+                client = c;
+                worker = w;
+                stream = c.GetStream();
+                socket = stream.Socket;
+                ReadMessageState = 0;
+            }
+            internal TcpClient client;
+            internal NetworkStream stream;
+            internal Socket socket;
+            internal Player player;
+            internal TCPSocketWorker worker;
+            internal int ReadMessageState;
+            internal byte[]? CurrentMessage;
+            internal bool IsAuthenticated => player != null;
+            internal volatile bool IsAuthenticating = false;
+            internal Queue<byte[]> pendingReceivedMessages = new();
+            internal void AddReceivedMessage(byte[] message)
+            {
+                if (!IsAuthenticated && !IsAuthenticating)
+                {
+                    IsAuthenticating = true;
+                    Task.Run(async () =>
+                    {
+                        var p = await Server.AuthenticatePlayer(Encoding.UTF8.GetString(message));
+                        if (p == null) socket.Close();
+                        else
+                        {
+                            player = p; // Authenticated
+                            player._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { messageWithHeader = data, state = this });
+                            player._CloseConnection = socket.Close;
+                            IsAuthenticating = false;
+                        }
+                    });
+                    // begin auth
+                }
+                else if (!IsAuthenticated && IsAuthenticating)
+                {
+                    // During auth, only push messages
+                    pendingReceivedMessages.Enqueue(message);
+                }
+                else // When authenticated, process messages
+                {
+                    pendingReceivedMessages.Enqueue(message);
+                    ProcessReceivedMessages();
+                }
+            }
+            void ProcessReceivedMessages()
+            {
+                while (pendingReceivedMessages.TryDequeue(out var m))
+                {
+                    // Send to all rooms referenced by the player
+                    var rooms = Room.FindAllWithPlayer(player);
+                    foreach (Room room in rooms)
+                        room.messageQueue.EnqueueAndNotify(
+                            new Room.PlayerMessage { pl = player, msg = m });
+                }
+            }
+        }
 
         // Running on Server Thread once
-        public void Init(int port, Server serverRef)
+        public void Init(int port)
         {
-            this.server = serverRef;
+            maxClientsPerWorker = ServerConfig.GetInt("TCPClientsPerWorker", 10);
+            var t = new Thread(() => TCPAcceptorThread(port));
+            t.Name = "TcpTransport Listener";
+            t.Start();
+        }
+
+        int maxClientsPerWorker = 10;
+
+        // Accepts and registers clients with workers
+        void TCPAcceptorThread(int port)
+        {
+            var sw = new Stopwatch();
+            sw.Start();
             listener = new TcpListener(IPAddress.Any, port);
             listener.Start(5000);
-            ServerLogger.Log($"Server started on {port}");
-            listener.BeginAcceptTcpClient(OnAcceptConcurrent, null);
-        }
-
-        void OnAcceptConcurrent(IAsyncResult ar)
-        {
-            TcpClient client = null;
-            try
+            while (!Server.ServerStopRequested)
             {
-                client = listener!.EndAcceptTcpClient(ar);
-            }
-            catch { };
-            if (!stopAccepting) listener.BeginAcceptTcpClient(OnAcceptConcurrent, null);
-            else return; //stopAccepting
-
-            if (client != null)
-            {
-                var ClientConnected = new Thread(() => OnClientConnected(client));
-                ClientConnected.Name = "TCP OnClientConnected";
-                ClientConnected.Start();
+                var client = listener.AcceptTcpClient();
+                client.NoDelay = true;
+                ServerLogger.Log($"CONN. T={sw.ElapsedMilliseconds}");
+                AddClient(client);
             }
         }
-
-        static int CC = 0;
-        // Thread: Started from OnAcceptConcurrent
-        void OnClientConnected(TcpClient client)
+        // Finds a suitable thread worker and registers the client with it
+        void AddClient(TcpClient client)
         {
-            int cid = CC++;
-            ServerLogger.Log($"[{cid}] Connected");
-            bool error = true;
-            var sd = new Stopwatch();
-            sd.Start();
-
-            client.NoDelay = true;
-            var hdrb = headerBuffers.Buy();
-            (byte[] bytes, Action Dispose)? packet = null;
-            string data = string.Empty;
-            try
+            TCPSocketWorker firstCapableWorker = null, activeWorker = null;
+            lock (workers)
             {
-                var stream = client.GetStream();
-                stream.ReadTimeout = 2000; // set 2s read timeout for initial packet
-                stream.ReadExactly(hdrb, 0, (int)ServerConfig.HeaderSize);
-                ServerLogger.Log($"[{cid}] Header T={sd.ElapsedMilliseconds}ms");
-
-                int size = BitConverter.ToInt16(hdrb, 0);
-
-                // Avoid DDOS attackers, limit first pack to small size
-                if (size < 0 || size > ServerConfig.MaxInitialPacketSize)
+                foreach (var t in workers)
                 {
-                    ServerLogger.Log($"[{cid}] ERROR: Client sending negative or too big header. T={sd.ElapsedMilliseconds}ms");
-                    client.Close(); client.Dispose(); return;
-                }
-
-                packet = GetPacketBuffer(size);
-                stream.ReadTimeout = 150; // set 150 ms for message payload timeout 
-                stream.ReadExactly(packet.Value.bytes, 0, size);
-
-                data = Encoding.UTF8.GetString(packet.Value.bytes, 0, size);
-                packet.Value.Dispose();
-                packet = null;
-                var player = server.AuthenticatePlayer(data).GetAwaiter().GetResult();
-                if (player == null)
-                {
-                    ServerLogger.Log($"ERROR: Client Unauthorized");
-                    client.Close(); client.Dispose(); return;
-                }
-
-                // Player is connected, create the API and give response
-                var messageQueue = new Queue<byte[]>();
-                player._SendData = (data) =>
-                {
-                    lock (messageQueue)
+                    // attempt to place in avtive thread first
+                    if (t.workerCount < maxClientsPerWorker)
                     {
-                        messageQueue.Enqueue(Message.Create(data));
-                        Monitor.Pulse(messageQueue);
-                    }
-                };
-                player._CloseConnection = stream.Close;
-
-                // Send a message to the player to tell him the room details and room id
-                var m = new MessageBuilder();
-                m.Write(player.activeRoom.Id);
-                m.Write(player.activeRoom.GetType().Name);
-                player.Send(m.ToArray());
-
-                // Experiment 1: 
-                //var sender = SendLoop(client, player, messageQueue);
-                //var receiver = ReceiveLoop(client, player);
-
-                // Start the sender thread...
-                var sender = new Thread(() => SendLoop(client, player, messageQueue));
-                sender.Name = $"{player.id} ({player.username}): TCP Send";
-                sender.Start();
-
-                // Start the Receiver thread
-                var receiver = new Thread(()=>ReceiveLoop(client, player));
-                receiver.Name = $"{player.id} ({player.username}): TCP Recv";
-                receiver.Start();
-
-                // Repurpose current thread as Receiver Thread
-                // Thread.CurrentThread.Name = $"{player.id} ({player.username}): TCP Recv";
-                // ReceiveLoop(client, player);
-                error = false;
-                ServerLogger.Log($"[{cid}] Done, T={sd.ElapsedMilliseconds}ms");
-
-                sender.Join();
-                receiver.Join();
-                ServerLogger.Log($"[{cid}] Client Cleanup, T={sd.ElapsedMilliseconds}ms");
-            }
-            catch (IOException ex) { }
-            catch (Exception ex)
-            {
-                client.Close();
-                client.Dispose();
-            }
-            finally
-            {
-                sd.Stop();
-                ServerLogger.Log($"[{cid}] {(error?"ERROR":"Done")} [at finally], T={sd.ElapsedMilliseconds}ms");
-                headerBuffers.Recycle(hdrb);
-                if (packet.HasValue) packet.Value.Dispose();
-            }
-        }
-
-        void ReceiveLoop(TcpClient client, Player player)
-        {
-            var abs = ArrayPool<byte>.Shared;
-            int sz = (int)ServerConfig.HeaderSize;
-            var stream = client.GetStream();
-            try
-            {
-                while (client.Connected)
-                {
-                    var hdrb = abs.Rent(sz);
-                    stream.ReadTimeout = 120 * 1000; // orphan players that do nothing for 2m?
-                    stream.ReadExactly(hdrb, 0, sz); // good wait place!
-                    int size = sz switch
-                    {
-                        1 => hdrb[0],
-                        2 => BitConverter.ToInt16(hdrb),
-                        4 => BitConverter.ToInt32(hdrb),
-                        _ => 0
-                    };
-                    abs.Return(hdrb);
-                    if (size > 0)
-                    {
-                        byte[] buffer = new byte[size];
-                        stream.ReadTimeout = 3000; // set for message payload timeout 
-                        stream.ReadExactly(buffer, 0, size);
-
-                        // Deliver the message to all rooms where player is connected
-                        var pm = new Room.PlayerMessage { msg = buffer, pl = player };
-                        var rooms = player.rooms;
-                        foreach (var r in rooms)
+                        if (firstCapableWorker == null) firstCapableWorker = t;
+                        if (t.active)
                         {
-                            r.messageQueue.EnqueueAndNotify(pm);
+                            activeWorker = t;
+                            break;
                         }
                     }
-
                 }
             }
-            catch (IOException ex) { client.Close(); client.Dispose(); }
-            catch (Exception e)
-            {
-                ServerLogger.Log(e.Message);
-            }
-            //ServerLogger.Write("TCPTransport: ReceiveLoop: Client for player " + player.uid + " disconnected");
-            player.Disconnect();
-        }
 
-        void SendLoop(TcpClient client, Player player, Queue<byte[]> queue)
-        {
-            var stream = client.GetStream();
-            try
-            {
-                byte[][] msgs;
-                while (client.Connected)
-                {
-                    lock (queue)
-                    {
-                        if (queue.Count == 0) Monitor.Wait(queue, 1000);
-                        msgs = queue.ToArray();
-                        queue.Clear();
-                    }
-                    foreach (var msg in msgs) stream.Write(msg);
-                }
-            }
-            catch (IOException e) { client.Close(); client.Dispose(); }
-            catch (Exception e)
-            {
-                ServerLogger.Log(e.Message);
-            }
-            //ServerLogger.Write("TCPTransport: SendLoop: Client for player " + player.uid + " disconnected");
-            player.Disconnect();
-        }
-
-        (byte[] bytes, Action Dispose) GetPacketBuffer(int size)
-        {
-            if (size <= ServerConfig.PolledBuffersSize)
-            {
-                var buffer = messageBuffers.Buy();
-                return (buffer, () => messageBuffers.Recycle(buffer));
-            }
+            if (activeWorker != null) { activeWorker.AddClient(client); return; }
+            // Not placed in active worker? place in first capable worker
+            if (firstCapableWorker != null) firstCapableWorker.AddClient(client);
             else
             {
-                var buffer = new byte[size];
-                return (buffer, () => { });
+                // Hire a new worker & add client to it
+                var worker = new TCPSocketWorker(this);
+                worker.AddClient(client);
             }
         }
 
-
-        bool stopAccepting = false;
-        void OnAccept(IAsyncResult ar)
+        // class with send request for a sender worker
+        class SendPacket()
         {
-            try
+            internal ClientState state;
+            internal byte[] messageWithHeader;
+        }
+
+        // TCP Worker processes the messages
+        // Sender workers do not select on a socket, they process all requests
+        // Receiver workers do select on their client list where to receive from
+        class TCPSocketWorker
+        {
+            List<ClientState> clients = new();
+            internal volatile bool active = false; // flag if the thread isnt waiting on a Select
+            internal ConcurrentQueue<SendPacket> SendMessageQueue = new();
+            internal int workerCount => clients.Count;
+            Thread sender, receiver;
+            internal TcpTransport transport;
+            volatile bool requestStop = false;
+            ConditionalWeakTable<Socket, ClientState> socketState = new();
+
+            internal TCPSocketWorker(TcpTransport transport)
             {
-                var client = listener!.EndAcceptTcpClient(ar);
-                if (stopAccepting) return; // just kill it
-                OnClientConnected(client);
-                client.NoDelay = true;
+                this.transport = transport;
+                int workerId = transport.workers.Count() + 1;
+                ServerLogger.Log($"New TCPSocketWorker ({workerId})");
+                lock (transport.workers) transport.workers.Add(this);
+                sender = new Thread(TCPSenderWorkerThread);
+                receiver = new Thread(TCPReceiverWorkerThread);
+                sender.Name = $"TCP Sender[{workerId}]";
+                receiver.Name = $"TCP Receiver[{workerId}]";
+                sender.Start();
+                receiver.Start();
             }
-            catch (Exception ex)
+
+            internal void TCPSenderWorkerThread()
             {
-                ServerLogger.Log($"Error accepting client: {ex.Message}");
+                Socket[] writableSockets;
+                var requeueBuffer = new List<SendPacket>();
+                while (!requestStop)
+                {
+                    lock (clients) writableSockets = clients.Select(x => x.socket).ToArray();
+                    if (writableSockets.Length == 0)
+                    {
+                        lock (SendMessageQueue) Monitor.Wait(SendMessageQueue, 1000);
+                        continue;
+                    }
+                    try
+                    {
+                        Socket.Select(null, writableSockets, null, 1000);
+
+                        while (SendMessageQueue.TryDequeue(out var sd))
+                        {
+                            if (writableSockets.Contains(sd.state.socket))
+                            {
+                                if (sd.state.socket.Connected) // else it's disconnected, drop the message
+                                    sd.state.stream.Write(sd.messageWithHeader, 0, sd.messageWithHeader.Length);
+                            }
+                            else requeueBuffer.Add(sd);
+                        }
+                    }
+                    catch (Exception) { } // The receiver will handle disconenction
+
+                    lock (SendMessageQueue) Monitor.Wait(SendMessageQueue, 1000);
+
+                    foreach (var packet in requeueBuffer)
+                        SendMessageQueue.Enqueue(packet);
+                    requeueBuffer.Clear();
+                }
             }
-            if (!stopAccepting) listener.BeginAcceptTcpClient(OnAccept, null);
+
+            internal void TCPReceiverWorkerThread()
+            {
+                List<Socket> socketsToRead = new();
+                while (!requestStop)
+                {
+                    if (clients.Count == 0)
+                    {
+                        // End redundant workers, keep only one on waiting
+                        if (transport.workers.Count > 0)
+                        {
+                            requestStop = true;
+                            lock (transport.workers) transport.workers.Remove(this);
+                        }
+                        else // Wait for clients
+                        {
+                            active = false;
+                            lock (clients) Monitor.Wait(clients, 1000);
+                            active = true;
+                        }
+                    }
+                    else
+                    {
+                        // Fill sockets list
+                        socketsToRead.Clear();
+                        lock (clients)
+                        {
+                            foreach (var c in clients)
+                                if (c.socket.Connected) socketsToRead.Add(c.socket);
+                                else { c.player?.Disconnect(); c.stream.Dispose(); }
+                            clients.RemoveAll(x => !x.socket.Connected);
+                        }
+                        if (socketsToRead.Count == 0) continue;
+
+                        active = false;
+                        Socket.Select(socketsToRead, null, null, 1000); // usual parking place
+                        active = true;
+
+                        foreach (var s in socketsToRead)
+                        {
+                            if (socketState.TryGetValue(s, out ClientState state))
+                            {
+                                try
+                                {
+                                    byte[] buffer = new byte[1024];
+                                    int bytesRead = state.stream.Read(buffer, 0, buffer.Length);
+                                    int offset = 0;
+                                    while (bytesRead > 0)
+                                    {
+                                        switch (state.ReadMessageState)
+                                        {
+                                            case 0: // Reading the 2-byte header
+                                                if (bytesRead - offset >= sizeof(ushort))
+                                                {
+                                                    int messageLength = BitConverter.ToUInt16(buffer, offset);
+                                                    offset += sizeof(ushort);
+                                                    state.CurrentMessage = new byte[messageLength];
+                                                    state.ReadMessageState = 1; // Move to reading the message
+                                                }
+                                                else goto BreakBytesRead; // Not enough data for the header
+                                                break;
+
+                                            case 1: // Reading the message body
+                                                int bytesToCopy = Math.Min(state.CurrentMessage!.Length, bytesRead - offset);
+                                                Array.Copy(buffer, offset, state.CurrentMessage, 0, bytesToCopy);
+                                                offset += bytesToCopy;
+
+                                                if (offset >= state.CurrentMessage.Length)
+                                                {
+                                                    state.AddReceivedMessage(state.CurrentMessage);
+                                                    state.ReadMessageState = 0; // Reset to reading the next header
+                                                    state.CurrentMessage = null;
+                                                }
+                                                break;
+                                        }
+                                        if (offset >= bytesRead) break;
+                                    }
+                                BreakBytesRead: { }
+                                }
+                                catch (IOException) { state.player.Disconnect(); }
+                                catch (ObjectDisposedException) { state.player.Disconnect(); }
+                                catch (Exception ex) { state.player.Disconnect(); ServerLogger.Log(ex.ToString()); }
+                            }
+                        }
+                    }
+                }
+            }
+
+            public void AddClient(TcpClient client)
+            {
+                var state = new ClientState(client, this);
+                socketState.Add(state.socket, state);
+                lock (clients)
+                {
+                    clients.Add(state);
+                    Monitor.Pulse(clients);
+                }
+            }
         }
 
         public static async Task SendAsync(Stream connection, byte[] data)
@@ -279,7 +328,6 @@ namespace Transport
 
         public void StopAccepting()
         {
-            stopAccepting = true;
             listener.Stop();
         }
     }

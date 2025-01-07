@@ -10,7 +10,7 @@ namespace PiGSF.Server.Utils
     public class MessageBuilder : BinaryWriter
     {
         // Builder API
-        readonly uint sz = ServerConfig.HeaderSize;
+        readonly int sz = ServerConfig.HeaderSize;
         MemoryStream? m_Stream;
         public MessageBuilder() : base(new MemoryStream())
         {

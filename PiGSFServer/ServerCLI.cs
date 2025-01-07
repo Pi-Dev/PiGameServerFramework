@@ -12,17 +12,15 @@ namespace PiGSF.Server
 
         static int Main(string[] args)
         {
-            Server server = null;
             ServerLogger.Log("Pi Game Server Framework by Pi-Dev");
             int port = int.Parse(ServerConfig.Get("bindPort"));
-            server = new Server(port);
 
-            var t = new Thread(() => server.Start());
+            var t = new Thread(() => Server.Start(port));
             t.Name = "Server Thread";
             t.Start();
 
-            while (!server.IsActive()) Thread.Sleep(16);
-            while (server!.IsActive())
+            while (!Server.IsActive()) Thread.Sleep(16);
+            while (Server.IsActive())
             {
                 int current = 0, total = 0; 
                 string prefix;
@@ -30,7 +28,7 @@ namespace PiGSF.Server
                 if (r == null)
                 {
                     prefix = "[Server]";
-                    server.knownPlayers.ForEach(p => { if (p.IsConnected()) current++; total++; });
+                    Server.knownPlayers.ForEach(p => { if (p.IsConnected()) current++; total++; });
                 }
                 else
                 {
@@ -40,7 +38,7 @@ namespace PiGSF.Server
                 }
                 Console.Write($"{prefix}({current}/{total})> ");
                 var input = ReadLine();
-                server.HandleCommand(input);
+                Server.HandleCommand(input);
             }
 
             cin.Dispose();
