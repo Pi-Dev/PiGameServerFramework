@@ -135,6 +135,7 @@ namespace Transport
                 // Hire a new worker & add client to it
                 var worker = new TCPSocketWorker(this);
                 worker.AddClient(client);
+                worker.StartThreads();
             }
         }
 
@@ -169,6 +170,10 @@ namespace Transport
                 receiver = new Thread(TCPReceiverWorkerThread);
                 sender.Name = $"TCP Sender[{workerId}]";
                 receiver.Name = $"TCP Receiver[{workerId}]";
+            }
+
+            internal void StartThreads()
+            {
                 sender.Start();
                 receiver.Start();
             }
@@ -219,8 +224,10 @@ namespace Transport
                         // End redundant workers, keep only one on waiting
                         if (transport.workers.Count > 0)
                         {
+                            //Thread.Sleep(1000 * 60 * 10);
                             requestStop = true;
                             lock (transport.workers) transport.workers.Remove(this);
+                            ServerLogger.Log("Worker DIED");
                         }
                         else // Wait for clients
                         {
@@ -237,7 +244,7 @@ namespace Transport
                         {
                             foreach (var c in clients)
                                 if (c.socket.Connected) socketsToRead.Add(c.socket);
-                                else { c.player?.Disconnect(); c.stream.Dispose(); }
+                                else { c.player?.Disconnect(); c.stream?.Dispose(); }
                             clients.RemoveAll(x => !x.socket.Connected);
                         }
                         if (socketsToRead.Count == 0) continue;
@@ -294,9 +301,9 @@ namespace Transport
                                     }
                                 BreakBytesRead: { }
                                 }
-                                catch (IOException) { state.player.Disconnect(); }
-                                catch (ObjectDisposedException) { state.player.Disconnect(); }
-                                catch (Exception ex) { state.player.Disconnect(); ServerLogger.Log(ex.ToString()); }
+                                catch (IOException) { state.player?.Disconnect(); }
+                                catch (ObjectDisposedException) { state.player?.Disconnect(); }
+                                catch (Exception ex) { state.player?.Disconnect(); ServerLogger.Log(ex.ToString()); }
                             }
                         }
                     }
