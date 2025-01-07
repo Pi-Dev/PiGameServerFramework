@@ -8,7 +8,7 @@ namespace PiGSF.Client.Transport
 {
     public interface ITransport: IDisposable
     {
-        Task Connect(string address);
+        void Connect(string address, int port);
         void SendBytes(byte[] data);
         void SendString(string data);
         void Close();

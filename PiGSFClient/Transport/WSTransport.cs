@@ -22,10 +22,10 @@ namespace PiGSFClient.Transport
         bool isConnected;
         bool ITransport.IsConnected() => isConnected;
 
-        public async Task Connect(string address)
+        public void Connect(string address, int port)
         {
             webSocket = new ClientWebSocket();
-            await webSocket.ConnectAsync(new Uri($"http://{address}"), CancellationToken.None);
+            webSocket.ConnectAsync(new Uri($"http://{address}"), CancellationToken.None).GetAwaiter().GetResult();
 
             var recvThread = new Thread(() =>
             {

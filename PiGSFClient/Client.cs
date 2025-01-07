@@ -39,13 +39,13 @@ namespace PiGSF.Client
         }
 
         // Connect
-        public async Task Connect(string address)
+        public void Connect(string address, int port)
         {
             Exception? ex = null;
             try
             {
                 var tcp = new TCPTransport(this);
-                await tcp.Connect(address);
+                tcp.Connect(address, port);
                 transport = tcp;
             }
             catch (Exception e)
@@ -55,7 +55,7 @@ namespace PiGSF.Client
                 try
                 {
                     var ws = new WSTransport(this);
-                    await ws.Connect(address); ex = null;
+                    ws.Connect(address, port); ex = null;
                 }
                 catch (Exception) { ex = e; }
             }

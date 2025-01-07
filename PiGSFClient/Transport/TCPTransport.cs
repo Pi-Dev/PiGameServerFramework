@@ -22,14 +22,12 @@ namespace PiGSFClient.Transport
         bool isConnected;
         TcpClient tcpClient = null;
 
-        public async Task Connect(string address)
+        public void Connect(string address, int port)
         {
-            IPEndPoint addr = IPEndPoint.Parse(address);
-
             // unguarded, client code must handle exception
             tcpClient = new TcpClient();
             tcpClient.NoDelay = true;
-            await tcpClient.ConnectAsync(addr);
+            tcpClient.Connect(address, port);
             var stream = tcpClient.GetStream();
             tcpStream = stream;
 
@@ -59,10 +57,9 @@ namespace PiGSFClient.Transport
                             byte[] buffer = new byte[size];
                             stream.ReadExactly(buffer, 0, size);
                             client.messages.Enqueue(buffer);
-                            lock (client.messages) Monitor.PulseAll(client.messages);
+                            lock (client.messages) Monitor.Pulse(client.messages);
                         }
                     }
-                    Thread.Sleep(1);
                 }
                 catch (Exception ex)
                 {
@@ -76,7 +73,7 @@ namespace PiGSFClient.Transport
                 isConnected = false;
                 tcpClient.Dispose();
             });
-            recvThread.Name = "TCP Receiver # ";
+            recvThread.Name = "TCP Receiver";
             recvThread.Start();
             isConnected = true;
         }

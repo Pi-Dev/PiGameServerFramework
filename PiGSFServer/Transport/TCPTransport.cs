@@ -242,9 +242,16 @@ namespace Transport
                         }
                         if (socketsToRead.Count == 0) continue;
 
-                        active = false;
-                        Socket.Select(socketsToRead, null, null, 1000); // usual parking place
-                        active = true;
+                        try
+                        {
+                            active = false;
+                            Socket.Select(socketsToRead, null, null, 1000); // usual parking place
+                            active = true;
+                        }
+                        catch (SocketException ex) { }
+                        catch (ObjectDisposedException ex) { }
+                        catch (Exception ex) { ServerLogger.Log(ex.ToString()); }
+
 
                         foreach (var s in socketsToRead)
                         {
