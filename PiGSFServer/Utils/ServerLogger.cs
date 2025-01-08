@@ -3,6 +3,22 @@ using System;
 using System.Collections.Concurrent;
 using System.Text;
 
+public class ConsoleWriteHandler : TextWriter
+{
+    public override Encoding Encoding => Encoding.UTF8;
+
+    public override void Write(char value)
+    {
+        ServerLogger.Log("ConsoleWriteHandler cannot handle this write, please debug");
+    }
+
+    public override void Write(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        ServerLogger.Log(value);
+    }
+}
+
 public static class ServerLogger
 {
     class LogEntry
@@ -38,16 +54,16 @@ public static class ServerLogger
         var sb = new StringBuilder();
         if (currentOutputChannel is List<string> ss)
             lock (ss)
-                foreach (var s in ss.TakeLast(300))
+                foreach (var s in ss)
                     if (filter == "" || (filter != "" && s.ToLower().Contains(filter.ToLower())))
                         sb.Append(s);
 
         lock (renderLocker)
         {
-            Console.ForegroundColor = ConsoleColor.Gray;
-            Console.Clear();    // RenderCurrentChannel
-            Console.Write(sb);  // RenderCurrentChannel
-            WritePrompt();
+			Console.ForegroundColor = ConsoleColor.Gray;
+            Console.Clear();
+            Console.Write(sb);
+			WritePrompt();
         }
     }
 
@@ -107,14 +123,14 @@ public static class ServerLogger
                             lock (io.rl.roomBuffer) io.rl.roomBuffer.Add(io.msg);
                             if (filter == "" || (filter != "" && io.msg.ToLower().Contains(filter.ToLower())))
                                 if (currentOutputChannel == io.rl.roomBuffer)
-                                    WriteMessageToScreen(io.msg.TrimEnd());
+                                    WriteMessageToScreen(io.msg);
                         }
                         else
                         {
                             lock (lastMessagesBuffer) lastMessagesBuffer.Add(io.msg);
                             if (filter == "" || (filter != "" && io.msg.Contains(filter)))
                                 if (currentOutputChannel == lastMessagesBuffer)
-                                    WriteMessageToScreen(io.msg.TrimEnd());
+                                    WriteMessageToScreen(io.msg);
                         }
                     }
                 }
@@ -145,15 +161,14 @@ public static class ServerLogger
         }
     }
 
-    public static string prompt = "[Starting...] $ ";
-    public static string inputBuffer = "";
-
+	public static string prompt;
+	public static string inputBuffer;
     public static void WriteMessageToScreen(string message)
     {
         lock (Console.Out)
         {
-            Console.ForegroundColor = ConsoleColor.Gray;
-            Console.WriteLine("\r" + message);
+			Console.ForegroundColor = ConsoleColor.Gray;
+            Console.WriteLine("\r"+message.TrimEnd());
             WritePrompt();
         }
     }
@@ -161,14 +176,10 @@ public static class ServerLogger
     {
         lock (Console.Out)
         {
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.Write("\r"+prompt);
-            Console.ForegroundColor = ConsoleColor.Green;
+			Console.ForegroundColor = ConsoleColor.White;
+            Console.Write("\r"+"".PadLeft(80)+"\r"+prompt);
+			Console.ForegroundColor = ConsoleColor.Green;
             Console.Write(inputBuffer);
-            var bpos = Console.CursorLeft;
-            Console.Write("".PadRight(Console.WindowWidth-bpos-1, ' '));
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.CursorLeft = bpos;
         }
     }
 

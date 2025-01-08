@@ -25,6 +25,9 @@ namespace PiGSF.Server
             while (!Server.IsActive()) Thread.Sleep(16);
             while (Server.IsActive())
             {
+                //var input = Console.ReadLine();
+                //Server.HandleCommand(input);
+                
                 // INPUT 
                 {
                     var key = Console.ReadKey(false);
@@ -47,8 +50,8 @@ namespace PiGSF.Server
                         // Append typed character to input buffer
                         ServerLogger.inputBuffer += key.KeyChar;
                     }
-
                 }
+                /**/
             }
             t.Join();
             return 0;
