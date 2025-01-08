@@ -209,6 +209,7 @@ namespace Transport
                     lock (clients) foreach (var d in disposableClients) clients.Remove(d);
                     foreach (var d in disposableClients)
                     {
+                        d.player?.Disconnect();
                         d.client.Dispose();
                         writableClients.Remove(d);
                     }
@@ -293,6 +294,7 @@ namespace Transport
                         lock (clients) foreach (var d in disposableClients) clients.Remove(d);
                         foreach (var d in disposableClients)
                         {
+                            d.player?.Disconnect();
                             d.client.Dispose();
                             readableClients.Remove(d);
                         }
