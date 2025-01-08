@@ -119,7 +119,7 @@ namespace PiGSF.Client
 
         public static int Main(string[] args)
         {
-            int ntests = 200;
+            int ntests = ClientConfig.numberOfTests;
             for (int i = 0; i < ntests; i++)
             {
                 TCPTest(i.ToString(), (ConsoleColor)((i + 6) % Enum.GetValues<ConsoleColor>().Length));
@@ -147,12 +147,12 @@ namespace PiGSF.Client
         static void TCPTestThread(string username, ConsoleColor color)
         {
             string playerData = username;
-            Log.Write($"[{username}] Connecting to {ClientConfig.serverAddress}:{ClientConfig.serverPort}...", color);
+            //Log.Write($"[{username}] Connecting to {ClientConfig.serverAddress}:{ClientConfig.serverPort}...", color);
             var client = new Client();
             try
             {
                 client.Connect(ClientConfig.serverAddress, ClientConfig.serverPort);
-                Log.Write($"[{username}] Connected", color);
+                //Log.Write($"[{username}] Connected", color);
             }
             catch (Exception ex)
             {
@@ -273,11 +273,14 @@ namespace PiGSF.Client
             };
 
             Thread.Sleep(1000);
-            client.SendString("Hello fellows!");
+
 
             var t = new Stopwatch();
             t.Start();
-            long nt = t.ElapsedMilliseconds + 1 + 500 * new Random().Next(0, 5);
+            long nt = t.ElapsedMilliseconds + 1 + 500 * new Random().Next(0, 10);
+            Thread.Sleep(new TimeSpan(0, 3, 0));
+            client.SendString("Hello fellows!");
+
             while (true)
             {
                 lock (client.messages) {
@@ -286,7 +289,7 @@ namespace PiGSF.Client
                 }
                 if(t.ElapsedMilliseconds > nt)
                 {
-                    nt = t.ElapsedMilliseconds + 1 + 500 * new Random().Next(0, 5);
+                    nt = t.ElapsedMilliseconds + 1 + 1000 * new Random().Next(0, 1000);
                     string randomMessage = messages[new Random().Next(messages.Length)];
                     client.SendString(randomMessage);
                 }
