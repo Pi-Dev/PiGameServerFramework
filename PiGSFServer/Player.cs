@@ -77,7 +77,7 @@ namespace PiGSF.Server
         public void Disconnect(bool disband = false)
         {
             if (Interlocked.Exchange(ref isConnected, 0) == 0)
-                return; // Another also called into Disconnect
+                return; // Another thread also called into Disconnect
 
             _CloseConnection?.Invoke();
             _SendData = null;
@@ -89,7 +89,6 @@ namespace PiGSF.Server
                 else r.messageQueue.EnqueueAndNotify(new Room.PlayerDisconnect { pl = this, disband = false });
             }
             _rooms = null;
-
         }
     }
 }

@@ -49,9 +49,10 @@ namespace Transport
                     Task.Run(async () =>
                     {
                         var p = await Server.AuthenticatePlayer(Encoding.UTF8.GetString(message));
-                        if (p == null) socket.Close();
+                        if (p == null) { socket.Close(); disconnectRequested = true; /* so it gets removed from the Worker */ }
                         else
                         {
+                            if (disconnectRequested) ServerLogger.Log("BUG: Authentication completed on disconnected player!");
                             player = p; // Authenticated
                             player._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { messageWithHeader = data, state = this });
                             player._CloseConnection = () => { socket.Disconnect(false); disconnectRequested = true; };
@@ -278,11 +279,10 @@ namespace Transport
                         disposableClients.Clear();
                         foreach (var wc in readableClients)
                         {
-                            if(!wc.client.Connected) wc.disconnectRequested = true; 
+                            if (!wc.client.Connected) { wc.disconnectRequested = true; }
                             if (wc.disconnectRequested)
                             {
                                 //ServerLogger.Log($"TCP Receiver handled disc for {wc.player?.name}");
-                                wc.player?.Disconnect(); // Must call Disconnect on
                                 wc.disconnectRecvHandled = true;
                                 if (wc.disconnectSendHandled)
                                 {
