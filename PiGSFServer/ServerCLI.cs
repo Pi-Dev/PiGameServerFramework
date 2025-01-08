@@ -4,10 +4,13 @@ namespace PiGSF.Server
 {
     class ServerCLI
     {
-        static StreamReader cin = new StreamReader(Console.OpenStandardInput());
-        static string ReadLine()
+        static async void UpdatePromptLoop()
         {
-            return cin!.ReadLineAsync()!.Result;
+            while (true)
+            {
+                await Task.Delay(500);
+                Server.UpdatePrompt(true);
+            }
         }
 
         static int Main(string[] args)
@@ -18,30 +21,35 @@ namespace PiGSF.Server
             var t = new Thread(() => Server.Start(port));
             t.Name = "Server Thread";
             t.Start();
-
+            UpdatePromptLoop();
             while (!Server.IsActive()) Thread.Sleep(16);
             while (Server.IsActive())
             {
-                int current = 0, total = 0; 
-                string prefix;
-                var r = ServerLogger.currentRoomChannel;
-                if (r == null)
+                // INPUT 
                 {
-                    prefix = "[Server]";
-                    Server.knownPlayers.ForEach(p => { if (p.IsConnected()) current++; total++; });
-                }
-                else
-                {
-                    prefix = $"[{r.GetType().Name}:{r.Id}]";
-                    prefix += $"[{r.Name}]";
-                    r.players.ForEach(p => { if (p.IsConnected()) current++; total++; });
-                }
-                Console.Write($"{prefix}({current}/{total})> ");
-                var input = ReadLine();
-                Server.HandleCommand(input);
-            }
+                    var key = Console.ReadKey(false);
+                    if (key.Key == ConsoleKey.Enter)
+                    {
+                        var ibuf = ServerLogger.inputBuffer;
+                        Console.WriteLine();// peserve what we typed
+                        ServerLogger.inputBuffer = "";
+                        Server.HandleCommand(ibuf);
+                    }
+                    else if (key.Key == ConsoleKey.Backspace && ServerLogger.inputBuffer.Length > 0)
+                    {
+                        // Handle backspace
+                        var ibuf = ServerLogger.inputBuffer;
+                        ServerLogger.inputBuffer = ibuf.Substring(0, ibuf.Length - 1);
+                        ServerLogger.WritePrompt();
+                    }
+                    else if (key.Key != ConsoleKey.Backspace)
+                    {
+                        // Append typed character to input buffer
+                        ServerLogger.inputBuffer += key.KeyChar;
+                    }
 
-            cin.Dispose();
+                }
+            }
             t.Join();
             return 0;
         }

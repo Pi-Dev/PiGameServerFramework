@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Net;
@@ -36,6 +37,9 @@ namespace Transport
             internal byte[]? CurrentMessage;
             internal bool IsAuthenticated => player != null;
             internal volatile bool IsAuthenticating = false;
+            internal volatile bool disconnectRequested = false;
+            internal volatile bool disconnectRecvHandled = false;
+            internal volatile bool disconnectSendHandled = false;
             internal Queue<byte[]> pendingReceivedMessages = new();
             internal void AddReceivedMessage(byte[] message)
             {
@@ -50,7 +54,7 @@ namespace Transport
                         {
                             player = p; // Authenticated
                             player._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { messageWithHeader = data, state = this });
-                            player._CloseConnection = socket.Close;
+                            player._CloseConnection = () => { socket.Disconnect(false); disconnectRequested = true; };
                             IsAuthenticating = false;
                         }
                     });
@@ -102,7 +106,7 @@ namespace Transport
             {
                 var client = listener.AcceptTcpClient();
                 client.NoDelay = true;
-                ServerLogger.Log($"CONN. T={sw.ElapsedMilliseconds}");
+                //ServerLogger.Log($"CONN. T={sw.ElapsedMilliseconds}");
                 AddClient(client);
             }
         }
@@ -180,23 +184,50 @@ namespace Transport
 
             internal void TCPSenderWorkerThread()
             {
-                Socket[] writableSockets;
+                List<Socket> socketsToWrite = new();
+                List<ClientState> disposableClients = new();
+                List<ClientState> writableClients;
                 var requeueBuffer = new List<SendPacket>();
                 while (!requestStop)
                 {
-                    lock (clients) writableSockets = clients.Select(x => x.socket).ToArray();
-                    if (writableSockets.Length == 0)
+                    // 1. check, prepare select list & check for disconnects before selecting
+                    lock (clients) writableClients = clients.Where(c => !c.disconnectSendHandled).ToList();
+                    disposableClients.Clear();
+                    foreach (var wc in writableClients)
+                    {
+                        if (wc.disconnectRequested)
+                        {
+                            //ServerLogger.Log($"TCP Sender handled disc for {wc.player?.name}");
+                            wc.disconnectSendHandled = true;
+                            if (wc.disconnectRecvHandled)
+                            {
+                                //ServerLogger.Log($"TCP Sender DISPOSED {wc.player?.name}");
+                                disposableClients.Add(wc);
+                            }
+                        }
+                    }
+                    lock (clients) foreach (var d in disposableClients) clients.Remove(d);
+                    foreach (var d in disposableClients)
+                    {
+                        d.client.Dispose();
+                        writableClients.Remove(d);
+                    }
+                    socketsToWrite.Clear();
+                    foreach (var s in writableClients) socketsToWrite.Add(s.socket);
+
+                    if (socketsToWrite.Count == 0)
                     {
                         lock (SendMessageQueue) Monitor.Wait(SendMessageQueue, 1000);
                         continue;
                     }
+
                     try
                     {
-                        Socket.Select(null, writableSockets, null, 1000);
+                        Socket.Select(null, socketsToWrite, null, 5000);
 
                         while (SendMessageQueue.TryDequeue(out var sd))
                         {
-                            if (writableSockets.Contains(sd.state.socket))
+                            if (socketsToWrite.Contains(sd.state.socket))
                             {
                                 if (sd.state.socket.Connected) // else it's disconnected, drop the message
                                     sd.state.stream.Write(sd.messageWithHeader, 0, sd.messageWithHeader.Length);
@@ -204,7 +235,7 @@ namespace Transport
                             else requeueBuffer.Add(sd);
                         }
                     }
-                    catch (Exception) { } // The receiver will handle disconenction
+                    catch (Exception) { } // The receiver will handle disconnection
 
                     lock (SendMessageQueue) Monitor.Wait(SendMessageQueue, 1000);
 
@@ -217,6 +248,9 @@ namespace Transport
             internal void TCPReceiverWorkerThread()
             {
                 List<Socket> socketsToRead = new();
+                List<ClientState> disposableClients = new();
+                List<ClientState> readableClients;
+
                 while (!requestStop)
                 {
                     if (clients.Count == 0)
@@ -227,7 +261,7 @@ namespace Transport
                             //Thread.Sleep(1000 * 60 * 10);
                             requestStop = true;
                             lock (transport.workers) transport.workers.Remove(this);
-                            ServerLogger.Log("Worker DIED");
+                            //ServerLogger.Log("Worker DIED");
                         }
                         else // Wait for clients
                         {
@@ -238,22 +272,39 @@ namespace Transport
                     }
                     else
                     {
-                        // Fill sockets list
-                        socketsToRead.Clear();
-                        lock (clients)
+                        // 1. check, prepare select list & check for disconnects before selecting
+                        lock (clients) readableClients = clients.Where(c => !c.disconnectRecvHandled).ToList();
+                        disposableClients.Clear();
+                        foreach (var wc in readableClients)
                         {
-                            foreach (var c in clients)
-                                if (c.socket.Connected) socketsToRead.Add(c.socket);
-                                else { c.player?.Disconnect(); c.stream?.Dispose(); }
-                            clients.RemoveAll(x => !x.socket.Connected);
+                            if(!wc.client.Connected) wc.disconnectRequested = true; 
+                            if (wc.disconnectRequested)
+                            {
+                                //ServerLogger.Log($"TCP Receiver handled disc for {wc.player?.name}");
+                                wc.player?.Disconnect(); // Must call Disconnect on
+                                wc.disconnectRecvHandled = true;
+                                if (wc.disconnectSendHandled)
+                                {
+                                    //ServerLogger.Log($"TCP Receiver DISPOSED {wc.player?.name}");
+                                    disposableClients.Add(wc);
+                                }
+                            }
                         }
+                        lock (clients) foreach (var d in disposableClients) clients.Remove(d);
+                        foreach (var d in disposableClients)
+                        {
+                            d.client.Dispose();
+                            readableClients.Remove(d);
+                        }
+                        socketsToRead.Clear();
+                        foreach (var s in readableClients) socketsToRead.Add(s.socket);    
                         if (socketsToRead.Count == 0) continue;
 
                         try
                         {
                             active = false;
-                            Socket.Select(socketsToRead, null, null, 1000); // usual parking place
-                            active = true;
+                            Socket.Select(socketsToRead, null, null, 5000); // usual parking place
+                            active = true; // if true the worker will be preferred for new clients
                         }
                         catch (SocketException ex) { }
                         catch (ObjectDisposedException ex) { }

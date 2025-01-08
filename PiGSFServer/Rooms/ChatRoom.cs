@@ -20,14 +20,14 @@ namespace PiGSF.Rooms
         protected override void OnPlayerConnected(Player player, bool isNew)
         {
             Log.Write($"[ == {player.name} joined == ]");
-            BroadcastMessage(Message.Create($"{player.name} has joined."), null);
+            //BroadcastMessage(Message.Create($"{player.name} has joined."), null);
         }
 
         protected override void OnPlayerDisconnected(Player player, bool disband)
         {
             string end = disband ? "left the room": "lost connection";
             Log.Write($"[ == {player.name} {end} == ]");
-            if(disband) BroadcastMessage(Message.Create($"{player.name} has left."), null);
+            //if(disband) BroadcastMessage(Message.Create($"{player.name} has left."), null);
             RemovePlayer(player); // Chatrooms just forget players
         }
 
