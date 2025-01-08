@@ -161,8 +161,8 @@ public static class ServerLogger
         }
     }
 
-	public static string prompt;
-	public static string inputBuffer;
+	public static string prompt = "";
+	public static string inputBuffer = "";
     public static void WriteMessageToScreen(string message)
     {
         lock (Console.Out)

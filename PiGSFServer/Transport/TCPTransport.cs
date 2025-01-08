@@ -52,7 +52,7 @@ namespace Transport
                         if (p == null) { socket.Close(); disconnectRequested = true; /* so it gets removed from the Worker */ }
                         else
                         {
-                            if (disconnectRequested) ServerLogger.Log("BUG: Authentication completed on disconnected player!");
+                            if (disconnectRequested) ServerLogger.Log($"BUG: Auth on disconnectRequested player {p.id} ({p.name})");
                             player = p; // Authenticated
                             player._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { messageWithHeader = data, state = this });
                             player._CloseConnection = () => { socket.Disconnect(false); disconnectRequested = true; };

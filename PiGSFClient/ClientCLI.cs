@@ -272,9 +272,6 @@ namespace PiGSF.Client
                 "Developer disliked a message: Error 404."
             };
 
-            Thread.Sleep(1000);
-
-
             var t = new Stopwatch();
             t.Start();
             long nt = t.ElapsedMilliseconds + 1 + 500 * new Random().Next(0, 10);
@@ -284,12 +281,12 @@ namespace PiGSF.Client
             while (true)
             {
                 lock (client.messages) {
-                    //while (client.messages.TryDequeue(out var m)) Log.Write($"RECV: {Encoding.UTF8.GetString(m)}", color);
+                    while (client.messages.TryDequeue(out var m)) Log.Write($"RECV: {Encoding.UTF8.GetString(m)}", color);
                     Monitor.Wait(client.messages, 16);
                 }
                 if(t.ElapsedMilliseconds > nt)
                 {
-                    nt = t.ElapsedMilliseconds + 1 + 1000 * new Random().Next(0, 1000);
+                    nt = t.ElapsedMilliseconds + 1 + 500 * new Random().Next(0, 10);
                     string randomMessage = messages[new Random().Next(messages.Length)];
                     client.SendString(randomMessage);
                 }

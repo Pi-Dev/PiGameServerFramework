@@ -10,7 +10,8 @@ namespace PiGSF.Client
 {
     public static class ClientConfig
     {
-        public static string serverAddress = "127.0.0.1"; //"eun1.pi-dev.com";
+        public static string serverAddress = "eun1.pi-dev.com";
+        //public static string serverAddress = "127.0.0.1";
         public static int serverPort = 27015;
         public static int numberOfTests = 10000;
 
