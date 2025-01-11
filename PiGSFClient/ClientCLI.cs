@@ -275,7 +275,7 @@ namespace PiGSF.Client
             var t = new Stopwatch();
             t.Start();
             long nt = t.ElapsedMilliseconds + 1 + 500 * new Random().Next(0, 10);
-            Thread.Sleep(new TimeSpan(0, 3, 0));
+            //Thread.Sleep(new TimeSpan(0, 3, 0));
             client.SendString("Hello fellows!");
 
             while (true)

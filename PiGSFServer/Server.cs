@@ -4,6 +4,8 @@ using PiGSF.Utils;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.WebSockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
 namespace PiGSF.Server
@@ -13,7 +15,8 @@ namespace PiGSF.Server
     {
         static int port;
         static int NextPlayerId = 1;
-        public static IAuthProvider authenticator;
+        //public static IAuthProvider authenticator;
+        static ConcurrentList<ITransport> transports;
 
         // Player Database
         static ConcurrentDictionary<string, Player> knownPlayersByUid = new();
@@ -26,7 +29,6 @@ namespace PiGSF.Server
             return null;
         }
 
-        static ConcurrentList<ITransport> transports;
         public static Room? defaultRoom;
         static List<Type> roomTypes;
 
@@ -321,7 +323,6 @@ namespace PiGSF.Server
         {
             mainThread = Thread.CurrentThread;
             Server.port = port;
-            authenticator = new JWTAuth();
 
             List<Type> transports = InitTransports();
             Server.transports = new();
@@ -340,6 +341,11 @@ namespace PiGSF.Server
             // Transports
             Server.transports.ForEach(x => x.Init(port));
             _isActive = true;
+
+            // SSL File if any
+            string fnCert = ServerConfig.Get("SSLServerCertPfx"); 
+            if(fnCert.StartsWith("~")) fnCert = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + fnCert.Substring(1);
+            serverCertificate = new X509Certificate2(fnCert, "yourpassword");
         }
 
         internal static void CreateDefaultRoom()
@@ -427,5 +433,34 @@ namespace PiGSF.Server
             return player;
         }
 
+        // HTTPS sockets
+        internal static X509Certificate2 serverCertificate = null;
+        public static X509Certificate2 LoadCertificateWithPrivateKey(string certPath, string keyPath)
+        {
+            // Load the certificate
+            var certPem = File.ReadAllText(certPath);
+            var certBytes = DecodePem(certPem, "CERTIFICATE");
+
+            // Load the private key
+            var keyPem = File.ReadAllText(keyPath);
+            var keyBytes = DecodePem(keyPem, "PRIVATE KEY");
+
+            using var rsa = RSA.Create();
+            rsa.ImportPkcs8PrivateKey(keyBytes, out _);
+
+            var cert = new X509Certificate2(certBytes);
+            return cert.CopyWithPrivateKey(rsa);
+        }
+        private static byte[] DecodePem(string pem, string label)
+        {
+            string header = $"-----BEGIN {label}-----";
+            string footer = $"-----END {label}-----";
+
+            int start = pem.IndexOf(header, StringComparison.Ordinal) + header.Length;
+            int end = pem.IndexOf(footer, StringComparison.Ordinal);
+
+            string base64 = pem.Substring(start, end - start).Replace("\n", "").Replace("\r", "").Trim();
+            return Convert.FromBase64String(base64);
+        }
     }
 }

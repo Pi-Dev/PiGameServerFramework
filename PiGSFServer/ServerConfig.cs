@@ -36,6 +36,8 @@ namespace PiGSF.Server
                 { "bindAddress", "0.0.0.0" },
                 { "bindPort", "12345" },
                 { "defaultRoom", "ChatRoom,Lobby" },
+                { "TCPClientsPerWorker", "128" },
+                { "SSLServerCertPem", "~/ServerCert.pem" },
             };
 
             // parse config file
@@ -43,7 +45,7 @@ namespace PiGSF.Server
             var fp = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/" + configFile;
             try
             {
-                var config = File.ReadAllLines(fp).Select(s => s.Split("=", StringSplitOptions.TrimEntries)).ToDictionary(x => x[0], x => x[1]);
+                var config = File.ReadAllLines(fp).Where(l=>!l.StartsWith("#")&&l.Contains("=")).Select(s => s.Split("=", StringSplitOptions.TrimEntries)).ToDictionary(x => x[0], x => x[1]);
                 foreach (var c in config) defaultConfig[c.Key] = c.Value;
             }
             catch (Exception ex)
