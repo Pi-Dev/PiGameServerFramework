@@ -58,7 +58,6 @@ namespace PiGSF.Server
         }
 
         // Packet size and format
-        public static int HeaderSize = 2;
         public static int PolledBuffersSize = 1024; // by default 1k
         public static int MaxInitialPacketSize = 4 * 1024; // by default 4k for JWT payload
 

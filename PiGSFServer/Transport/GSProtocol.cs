@@ -29,14 +29,9 @@ namespace PiGSF.Transport
 
         public byte[] CreateMessage(byte[] source)
         {
-            var ms = new MemoryStream((int)(source.Length + ServerConfig.HeaderSize));
+            var ms = new MemoryStream(source.Length + 2);
             var bw = new BinaryWriter(ms);
-            switch (ServerConfig.HeaderSize)
-            {
-                case 1: bw.Write((byte)source.Length); break;
-                case 2: bw.Write((ushort)source.Length); break;
-                case 4: bw.Write((uint)source.Length); break;
-            }
+            bw.Write((ushort)source.Length);
             bw.Write(source, 0, source.Length);
             return ms.ToArray();
         }

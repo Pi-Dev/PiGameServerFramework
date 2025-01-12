@@ -66,7 +66,7 @@ namespace Transport
                             else
                             {
                                 player = p; // Authenticated
-                                player._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { messageWithHeader = data, state = this });
+                                player._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { message = data, state = this });
                                 player._CloseConnection = () => { socket.Disconnect(false); disconnectRequested = true; };
                                 IsAuthenticating = false;
                             }
@@ -107,7 +107,7 @@ namespace Transport
                             <head>
                             <script>
                                 function connectWebSocket() {
-                                    const ws = new WebSocket('ws{{(secure ? "s" : "")}}://127.0.0.1:27015');
+                                    window.ws = new WebSocket('ws{{(secure ? "s" : "")}}://127.0.0.1:27015');
                                     ws.onopen = () => console.log('WebSocket connected!');
                                     ws.onmessage = (message) => console.log('Received:', message.data);
                                     ws.onclose = () => console.log('WebSocket closed.');
@@ -279,7 +279,7 @@ namespace Transport
         class SendPacket()
         {
             internal ClientState state;
-            internal byte[] messageWithHeader;
+            internal byte[] message;
         }
 
         // TCP Worker processes the messages
@@ -363,7 +363,10 @@ namespace Transport
                             if (socketsToWrite.Contains(sd.state.socket))
                             {
                                 if (sd.state.socket.Connected) // else it's disconnected, drop the message
-                                    sd.state.stream.Write(sd.messageWithHeader, 0, sd.messageWithHeader.Length);
+                                {
+                                    var framed = sd.state.protocol.CreateMessage(sd.message);
+                                    sd.state.stream.Write(framed, 0, framed.Length);
+                                }
                             }
                             else requeueBuffer.Add(sd);
                         }

@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Text;
 using PiGSF.Server;
-using PiGSF.Server.Utils;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace PiGSF.Rooms
@@ -36,12 +35,12 @@ namespace PiGSF.Rooms
             var text = Encoding.UTF8.GetString(message);
             if (text.StartsWith("crash")) throw new Exception("Debugging error");
             Log.Write($"[{Name}] {sender.name}: {text}");
-            BroadcastMessage(Message.Create($"{sender.name}: {text}"), sender);
+            BroadcastMessage(Encoding.UTF8.GetBytes($"{sender.name}: {text}"), sender);
         }
 
         protected override void OnServerCommand(string s)
         {
-            BroadcastMessage(Message.Create(s));
+            BroadcastMessage(Encoding.UTF8.GetBytes(s));
         }
 
         protected override void OnShutdownRequested()
