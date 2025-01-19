@@ -1,7 +1,4 @@
-﻿using Transport;
-using System;
-using PiGSF.Utils;
-using System.Collections.Concurrent;
+﻿using PiGSF.Utils;
 
 namespace PiGSF.Server
 {
@@ -41,13 +38,13 @@ namespace PiGSF.Server
                 if (destination != null)
                 {
                     if (!destination.AddPlayer(this))
-                        if (activeRoom == Server.defaultRoom) Disconnect();
+                        if (activeRoom == Room.defaultRoom) Disconnect();
                         else TransferToDefaultLobby();
                 }
                 else Disconnect();
             }
         }
-        public void TransferToDefaultLobby() => TransferToRoom(Server.defaultRoom);
+        public void TransferToDefaultLobby() => TransferToRoom(Room.defaultRoom);
 
         // This joins the player to destination additively, 
         // and by default sets the active room to destination

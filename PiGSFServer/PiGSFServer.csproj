@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Transport\khgkubti.s0b~" />
+    <None Remove="Server\khgkubti.s0b~" />
   </ItemGroup>
 
   <ItemGroup>

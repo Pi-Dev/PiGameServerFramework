@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PiGSF.Transport
+namespace PiGSF.Server
 {
     internal class GameServerProtocol : IProtocol
     {

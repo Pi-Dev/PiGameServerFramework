@@ -29,23 +29,9 @@ namespace PiGSF.Server
             return null;
         }
 
-        public static Room? defaultRoom;
-        static List<Type> roomTypes;
 
         static volatile bool _isActive = false;
         public static bool IsActive() => _isActive;
-
-        static List<Type> InitRoomTypes()
-        {
-            ServerLogger.Log("[===== Room Types =====]");
-            var ts = TypeLoader.GetSubclassesOf<Room>();
-            foreach (var r in ts)
-            {
-                ServerLogger.Log($"|- {r.Name} [{r.FullName}]");
-            }
-            ServerLogger.Log("|");
-            return ts;
-        }
 
         static List<Type> InitTransports()
         {
@@ -156,7 +142,7 @@ namespace PiGSF.Server
                 string str = "";
                 string what = "";
                 if (tokens.Length > 0) what = tokens[1];
-                str += RoomLogEntry(defaultRoom) + "\n";
+                str += RoomLogEntry(Room.defaultRoom) + "\n";
                 Room.rooms.ForEach(r =>
                 {
                     if (r.Name != "" && r.Name.Contains(what))
@@ -333,10 +319,9 @@ namespace PiGSF.Server
             }
 
             InitAuthenticators();
-            roomTypes = InitRoomTypes();
 
             // Init default room
-            CreateDefaultRoom();
+            Room.defaultRoom = Room.CreateDefaultRoom();
 
             // Transports
             Server.transports.ForEach(x => x.Init(port));
@@ -346,19 +331,6 @@ namespace PiGSF.Server
             string fnCert = ServerConfig.Get("SSLServerCertPfx"); 
             if(fnCert.StartsWith("~")) fnCert = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + fnCert.Substring(1);
             serverCertificate = new X509Certificate2(fnCert, "yourpassword");
-        }
-
-        internal static void CreateDefaultRoom()
-        {
-            if (defaultRoom != null) return;
-            var tokens = ServerConfig.Get("defaultRoom").Split(",", StringSplitOptions.TrimEntries);
-            if (tokens.Length > 1)
-            {
-                List<Type> t = roomTypes.Where(x => x.Name.ToLower() == tokens[0].ToLower()).ToList();
-                if (t.Count > 0)
-                    defaultRoom = Activator.CreateInstance(t[0], tokens[1]) as Room;
-            }
-            if (defaultRoom == null) defaultRoom = new ChatRoom("Lobby");
         }
 
         internal static volatile bool ServerStopRequested = false;
@@ -428,7 +400,7 @@ namespace PiGSF.Server
                 player.name = pd.name;
                 knownPlayers.Add(player);
                 knownPlayersByUid[pd.uid] = player;
-                player.JoinRoom(defaultRoom);
+                player.JoinRoom(Room.defaultRoom);
             }
             return player;
         }

@@ -14,6 +14,16 @@ namespace PiGSF.Rooms
             MinPlayers = 0;
             WaitTime = 0;
             Log.Write($"ChatRoom {Name} created.");
+            Server.RESTManager.Register($"/chats/{this.Id}", (r) => {
+                var sb = new StringBuilder();
+                sb.Append("<html><head><title>Chat</title></head><body><h1>Chat</h1><ul>");
+                foreach (var m in this.Log.roomBuffer)
+                {
+                    sb.Append($"<li>{m}</li>");
+                }
+                sb.Append("</ul></body></html>");
+                return new Response(200, sb.ToString());
+            });
         }
 
         protected override void OnPlayerConnected(Player player, bool isNew)

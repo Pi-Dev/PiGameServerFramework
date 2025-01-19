@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using PiGSF.Rooms;
 using PiGSF.Utils;
 
 namespace PiGSF.Server
@@ -136,13 +137,13 @@ namespace PiGSF.Server
                 string message = $"ROOM {Id}: {GetType().Name} ENCOUNTERED ERROR:\n" + e.ToString();
                 ServerLogger.Log(message);
                 Log.Write(message);
-                if (Server.defaultRoom == this)
+                if (Room.defaultRoom == this)
                 {
                     message = "CRITICAL! THE DEFAULT ROOM CRASHED!";
                     ServerLogger.Log(message);
                     Log.Write(message);
-                    Server.defaultRoom = null;
-                    Server.CreateDefaultRoom();
+                    Room.defaultRoom = null;
+                    Room.defaultRoom = CreateDefaultRoom?.Invoke();
                 }
                 Dispose();
             }
@@ -205,6 +206,35 @@ namespace PiGSF.Server
         {
             Debug.Assert(Thread.CurrentThread.ManagedThreadId == roomThreadId);
         }
+
+        // Default Room Management
+        static List<Type> InitRoomTypes()
+        {
+            ServerLogger.Log("[===== Room Types =====]");
+            var ts = TypeLoader.GetSubclassesOf<Room>();
+            foreach (var r in ts)
+            {
+                ServerLogger.Log($"|- {r.Name} [{r.FullName}]");
+            }
+            ServerLogger.Log("|");
+            return ts;
+        }
+
+        static List<Type> roomTypes;
+        public static Room? defaultRoom;
+        public static Func<Room> CreateDefaultRoom = () =>
+        {
+            roomTypes = InitRoomTypes();
+            var tokens = ServerConfig.Get("defaultRoom").Split(",", StringSplitOptions.TrimEntries);
+            if (tokens.Length > 1)
+            {
+                List<Type> t = roomTypes.Where(x => x.Name.ToLower() == tokens[0].ToLower()).ToList();
+                if (t.Count > 0)
+                    return Activator.CreateInstance(t[0], tokens[1]) as Room;
+            }
+            return new ChatRoom("Lobby");
+        };
+
         // Room API
 
         /// Thread-safe
@@ -231,7 +261,7 @@ namespace PiGSF.Server
         public void KickPlayer(Player player)
         {
             if (player == null) return;
-            if (this == Server.defaultRoom)
+            if (this == Room.defaultRoom)
                 DisconnectPlayer(player, true);
             else
             {
@@ -375,7 +405,7 @@ namespace PiGSF.Server
             if (!disposedValue)
             {
                 // defaultRoom is a special case - first zero it down, causing players to be disconnected
-                if(this == Server.defaultRoom) Server.defaultRoom = null;
+                if(this == defaultRoom) defaultRoom = null;
 
                 // Remove this room from all referenced player
                 players.ForEach(p =>
@@ -384,9 +414,9 @@ namespace PiGSF.Server
                     if (p.activeRoom == this) p.activeRoom = null;
                     if (p.rooms.Count == 0 && p.activeRoom == null)
                     {
-                        if (Server.defaultRoom == null)
+                        if (defaultRoom == null)
                             p.Disconnect();
-                        else p.JoinRoom(Server.defaultRoom, true);
+                        else p.JoinRoom(defaultRoom, true);
                     }
                 });
                 if (disposing)

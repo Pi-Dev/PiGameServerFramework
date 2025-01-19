@@ -8,10 +8,9 @@ using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Text;
 using PiGSF.Server;
-using PiGSF.Transport;
 using PiGSF.Utils;
 
-namespace Transport
+namespace PiGSF.Server
 {
     public class TcpTransport : ITransport
     {
@@ -95,80 +94,120 @@ namespace Transport
                             new Room.PlayerMessage { pl = player, msg = m });
                 }
             }
-            void InitHTTPProtocol(string httpRequest, bool secure) // Runs on Task.Run thread
+
+            void HandleHTTPProtocol(string httpRequest, bool secure) // Runs on Task.Run thread
             {
-                string ErrorResp = $$"""
-                            HTTP/1.1 403 Forbidden
-                            Server: Pi GameServer Framework
-                            Content-Type: text/html
-                            Cache-Control: no-cache
-
-                            <html>
-                            <head>
-                            <script>
-                                function connectWebSocket() {
-                                    window.ws = new WebSocket('ws{{(secure ? "s" : "")}}://127.0.0.1:27015');
-                                    ws.onopen = () => console.log('WebSocket connected!');
-                                    ws.onmessage = (message) => console.log('Received:', message.data);
-                                    ws.onclose = () => console.log('WebSocket closed.');
-                                    ws.onerror = (error) => console.error('WebSocket error:', error);
-                                }
-                            </script>
-                            </head>
-                            <body>
-                            Debug: <button onclick="connectWebSocket()">Test WebSocket</button> [TCPTransport.cs]</body>
-                            </html>
-                            """;
-
                 var lines = httpRequest.Split("\r\n");
-                if (lines[0].Contains("HTTP/") && httpRequest.EndsWith("\r\n\r\n"))
-                {
-                    bool isUpgradeToWS = false;
-                    bool supportPerMessageDeflate = false;
-                    string clientKey = "";
-                    foreach (var line in lines)
-                    {
-                        var l = line.ToLower();
-                        if (l.StartsWith("upgrade: websocket")) isUpgradeToWS = true;
-                        else if (l.StartsWith("sec-websocket-extensions:") && l.Contains("permessage-deflate")) supportPerMessageDeflate = true;
-                        else if (l.StartsWith("sec-websocket-key:")) clientKey = line.Split(":", StringSplitOptions.TrimEntries)[1];
-                    }
-                    if (isUpgradeToWS)
-                    {
-                        // Setup websocket
-                        const string WebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-                        string acceptKey = Convert.ToBase64String(
-                            System.Security.Cryptography.SHA1.HashData(
-                                Encoding.UTF8.GetBytes(clientKey + WebSocketGuid)
-                            )
-                        );
-                        // Send the handshake response
-                        string response = $"HTTP/1.1 101 Switching Protocols\r\n" +
-                                          $"Upgrade: websocket\r\n" +
-                                          $"Connection: Upgrade\r\n" +
-                                          $"Sec-WebSocket-Accept: {acceptKey}\r\n\r\n";
-                        byte[] resp = Encoding.UTF8.GetBytes(response);
-                        stream.Write(resp, 0, resp.Length);
-                        stream.Flush();
-                        var wsp = new WebSocketProtocol();
-                        wsp.compressed = supportPerMessageDeflate;
-                        protocol = wsp;
-                        IsProtocolInitializing = false;
-                        return;
-                    }
 
-                    // Not a WS Upgrade request. Send the generic response
-                    stream.Write(Encoding.UTF8.GetBytes(ErrorResp));
-                    stream.Flush();
+                // Verify HTTP structure and ensure headers end with \r\n\r\n
+                if (!(lines[0].Contains("HTTP/") && httpRequest.EndsWith("\r\n\r\n")))
+                {
                     client.Close();
                     disconnectRequested = true;
                     return;
                 }
 
-                // Not a HTTP?
+                // Parse the request line (e.g., "GET /path HTTP/1.1")
+                string[] requestLine = lines[0].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (requestLine.Length < 3)
+                {
+                    client.Close();
+                    disconnectRequested = true;
+                    return;
+                }
+
+                string method = requestLine[0];
+                string path = requestLine[1];
+
+                // Collect headers
+                var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    if (string.IsNullOrWhiteSpace(lines[i])) break;
+
+                    var headerParts = lines[i].Split(':', 2, StringSplitOptions.TrimEntries);
+                    if (headerParts.Length == 2)
+                    {
+                        headers[headerParts[0]] = headerParts[1];
+                    }
+                }
+
+                // Check for WebSocket upgrade
+                bool isUpgradeToWS = headers.ContainsKey("Upgrade") && headers["Upgrade"].Equals("websocket", StringComparison.OrdinalIgnoreCase);
+                bool supportPerMessageDeflate = headers.ContainsKey("Sec-WebSocket-Extensions") && headers["Sec-WebSocket-Extensions"].Contains("permessage-deflate", StringComparison.OrdinalIgnoreCase);
+                string? clientKey = headers.ContainsKey("Sec-WebSocket-Key") ? headers["Sec-WebSocket-Key"] : null;
+
+                if (isUpgradeToWS && clientKey != null)
+                {
+                    // Handle WebSocket upgrade handshake
+                    const string WebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+                    string acceptKey = Convert.ToBase64String(
+                        System.Security.Cryptography.SHA1.HashData(
+                            Encoding.UTF8.GetBytes(clientKey + WebSocketGuid)
+                        )
+                    );
+
+                    string switchResp = $"HTTP/1.1 101 Switching Protocols\r\n" +
+                                        $"Upgrade: websocket\r\n" +
+                                        $"Connection: Upgrade\r\n" +
+                                        $"Sec-WebSocket-Accept: {acceptKey}\r\n\r\n";
+                    byte[] resp = Encoding.UTF8.GetBytes(switchResp);
+                    stream.Write(resp, 0, resp.Length);
+                    stream.Flush();
+
+                    var wsp = new WebSocketProtocol();
+                    wsp.compressed = supportPerMessageDeflate;
+                    protocol = wsp;
+                    IsProtocolInitializing = false;
+                    return;
+                }
+
+                // Not a WebSocket upgrade; handle as a normal HTTP request
+                var bodyIndex = httpRequest.IndexOf("\r\n\r\n") + 4;
+                string body = bodyIndex < httpRequest.Length ? httpRequest.Substring(bodyIndex) : string.Empty;
+
+                var request = new Request(method, path, body)
+                {
+                    Headers = headers
+                };
+
+                Response response;
+                try
+                {
+                    response = RESTManager.HandleRequest(request);
+                    if (response.Body == null) throw new Exception("Null HTTP Response");
+                }
+                catch (Exception ex)
+                {
+                    response = new Response(500, "text/plain", $"Internal Server Error: {ex.Message}");
+                }
+
+                // Build and send HTTP response
+                string httpResponse = $"HTTP/1.1 {response.StatusCode} {GetStatusMessage(response.StatusCode)}\r\n" +
+                                      $"Content-Type: {response.ContentType}\r\n" +
+                                      $"Content-Length: {Encoding.UTF8.GetByteCount(response.Body)}\r\n" +
+                                      string.Join("", response.ExtraHeaders.Select(header => $"{header.Key}: {header.Value}\r\n")) +
+                                      "\r\n" + response.Body;
+
+                byte[] httpRespBytes = Encoding.UTF8.GetBytes(httpResponse);
+                stream.Write(httpRespBytes, 0, httpRespBytes.Length);
+                stream.Flush();
                 client.Close();
                 disconnectRequested = true;
             }
+
+            string GetStatusMessage(int statusCode)
+            {
+                return statusCode switch
+                {
+                    200 => "OK",
+                    404 => "Not Found",
+                    403 => "Forbidden",
+                    500 => "Internal Server Error",
+                    _ => "Unknown"
+                };
+            }
+
             internal void InitProtocol(Span<byte> buffer)
             {
                 IsProtocolInitializing = true;
@@ -183,7 +222,7 @@ namespace Transport
                             this.stream = sslStream;
                             var buffer = new byte[4196];
                             int bytesRead = sslStream.Read(buffer, 0, buffer.Length);
-                            InitHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, bytesRead), true);
+                            HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, bytesRead), true);
                         }
                         catch (AuthenticationException e)
                         {
@@ -201,10 +240,11 @@ namespace Transport
                 }
                 else if (worker.transport.enableInsecureHTTP)
                 {
-                    Task.Run(() => {
+                    Task.Run(() =>
+                    {
                         var buffer = new byte[4196];
                         int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                        InitHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, bytesRead), false);
+                        HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, bytesRead), false);
                     });
                 }
                 else
@@ -467,7 +507,7 @@ namespace Transport
                                         if (bytesRead > 0)
                                         {
                                             var messages = state.protocol.AddData(buffer.AsSpan(0, bytesRead));
-                                            foreach(var m in messages) state.AddReceivedMessage(m);
+                                            foreach (var m in messages) state.AddReceivedMessage(m);
                                         }
                                     }
                                 }

@@ -13,7 +13,7 @@ namespace PiGSF.Server
             }
         }
 
-        static int Main(string[] args)
+        public static void Exec()
         {
             ServerLogger.Log("Pi Game Server Framework by Pi-Dev");
             int port = int.Parse(ServerConfig.Get("bindPort"));
@@ -24,10 +24,7 @@ namespace PiGSF.Server
             UpdatePromptLoop();
             while (!Server.IsActive()) Thread.Sleep(16);
             while (Server.IsActive())
-            {
-                //var input = Console.ReadLine();
-                //Server.HandleCommand(input);
-                
+            {                
                 // INPUT 
                 {
                     var key = Console.ReadKey(false);
@@ -53,8 +50,8 @@ namespace PiGSF.Server
                 }
                 /**/
             }
+
             t.Join();
-            return 0;
         }
     }
 }
