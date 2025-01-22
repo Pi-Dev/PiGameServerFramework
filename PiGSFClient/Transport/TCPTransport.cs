@@ -30,6 +30,8 @@ namespace PiGSFClient.Transport
             tcpClient.Connect(address, port);
             var stream = tcpClient.GetStream();
             tcpStream = stream;
+            tcpStream.Write(Encoding.UTF8.GetBytes("GS"), 0, 2); // GS Protocol
+
 
             // Set the delegates
             var abs = ArrayPool<byte>.Shared;

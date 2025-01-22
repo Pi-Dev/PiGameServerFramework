@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Nodes;
 using System.Threading;
 
 namespace PiGSF.Server
@@ -29,72 +30,16 @@ namespace PiGSF.Server
         public string Body { get; set; }
         public Dictionary<string, string> ExtraHeaders { get; set; } = new Dictionary<string, string>();
         public void AddHeader(string key, string value) => ExtraHeaders[key] = value;
-        public Response(int statusCode, string body) => new Response(statusCode, "text/plain", body);
         public Response(int statusCode, string contentType, string body)
         {
             StatusCode = statusCode;
             ContentType = contentType;
             Body = body;
         }
-    }
-
-    public class DirectoryFileServer
-    {
-        private readonly string _baseDirectory;
-
-        public DirectoryFileServer(string baseDirectory)
-        {
-            if (!Directory.Exists(baseDirectory))
-                throw new DirectoryNotFoundException($"Directory not found: {baseDirectory}");
-
-            _baseDirectory = baseDirectory;
-        }
-
-        public static implicit operator Func<Request, Response>(DirectoryFileServer server)
-        {
-            return server.Invoke;
-        }
-
-        public Response Invoke(Request request)
-        {
-            try
-            {
-                string relativePath = request.Path.Substring(request.Path.IndexOf("/") + 1); // Remove leading path component
-                string filePath = Path.Combine(_baseDirectory, relativePath);
-
-                if (!File.Exists(filePath))
-                {
-                    return new Response(404, "text/plain", "File Not Found");
-                }
-
-                string contentType = GetContentType(filePath);
-                string fileContent = File.ReadAllText(filePath);
-
-                return new Response(200, contentType, fileContent);
-            }
-            catch (Exception ex)
-            {
-                return new Response(500, "text/plain", $"Error: {ex.Message}");
-            }
-        }
-
-        private string GetContentType(string filePath)
-        {
-            string extension = Path.GetExtension(filePath).ToLower();
-            return extension switch
-            {
-                ".html" => "text/html",
-                ".css" => "text/css",
-                ".js" => "application/javascript",
-                ".json" => "application/json",
-                ".png" => "image/png",
-                ".jpg" => "image/jpeg",
-                ".jpeg" => "image/jpeg",
-                ".gif" => "image/gif",
-                ".txt" => "text/plain",
-                _ => "application/octet-stream",
-            };
-        }
+        public static Response Text(string body, int status=200) => new Response(status, "text/plain", body);
+        public static Response Html(string body, int status=200) => new Response(status, "text/html", body);
+        public static Response Json(string body, int status=200) => new Response(status, "text/json", body);
+        public static Response Json(JsonNode node, int status=200) => new Response(status, "text/json", node.ToJsonString());
     }
 
     static class RESTManager
@@ -175,8 +120,10 @@ namespace PiGSF.Server
             {
                 // Prioritize full path matches
                 if (Routes.ContainsKey(request.Path) && Routes[request.Path].ContainsKey(request.Method))
-                    return Routes[request.Path][request.Method](request);
-
+                {
+                    var r = Routes[request.Path][request.Method](request);
+                    return r;
+                }
                 // Find the most specific wildcard match
                 var matchingPaths = Routes.Keys
                     .Where(path => IsPathMatch(path, request.Path))

@@ -1,13 +1,10 @@
-﻿using System.Buffers;
-using System.Collections.Concurrent;
-using System.Diagnostics;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Text;
-using PiGSF.Server;
 using PiGSF.Utils;
 
 namespace PiGSF.Server
@@ -211,6 +208,14 @@ namespace PiGSF.Server
             internal void InitProtocol(Span<byte> buffer)
             {
                 IsProtocolInitializing = true;
+                if (buffer[0] == 'G' && buffer[1] == 'S')
+                {
+                    var buf = new byte[2];
+                    var hs = stream.Read(buf, 0, 2);
+                    protocol = new GameServerProtocol();
+                    IsProtocolInitializing = false;
+                    return;
+                }
                 if (buffer[0] == 0x16)
                 {
                     Task.Run(() => // TLS Handshake

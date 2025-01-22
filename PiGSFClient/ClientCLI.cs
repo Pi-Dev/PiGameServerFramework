@@ -1,21 +1,5 @@
-﻿using Microsoft.VisualBasic;
-using PiGSF.Client.Utils;
-using PiGSF.Utils;
-using System;
-using System.Buffers;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Net.Http.Headers;
-using System.Net.Sockets;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography.X509Certificates;
+﻿using System.Diagnostics;
 using System.Text;
-using System.Threading.Tasks;
-using System.Xml.Serialization;
 
 namespace PiGSF.Client
 {

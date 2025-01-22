@@ -1,5 +1,6 @@
 ﻿using Auth;
 using System.Collections.ObjectModel;
+using System.Text.Json.Nodes;
 
 namespace PiGSF.Server
 {
@@ -10,19 +11,33 @@ namespace PiGSF.Server
         public string team = "default";
         public string name = "Guest";
         public string username = "guest";
-        // public int elo = 0; // Sample line
+        public string avatarUrl = "";
 
         public string ToTableString()
         {
             return
                 /* Id  */ id.ToString().PadRight(5) + "| " +
-                // /* ELO  */ elo.ToString().PadRight(5) + "| " +  // Sample line!
                 /* username */ username.PadRight(16) + " | " +
                 // /* name */ name.PadRight(32) + " | " +
                 /* uid */ uid.PadRight(48) + " |";
         }
 
         public override string? ToString() => $"[{id}] {name} = {uid}";
+        public JsonObject ToJsonObject()
+        {
+            var obj = new JsonObject();
+            obj["id"] = id;
+            obj["name"] = name;
+            obj["username"] = username;
+            obj["uid"] = uid;
+            obj["team"] = team;
+            obj["avatarUrl"] = avatarUrl;
+            return obj;
+        }
+        public int GetRating(string category)
+        {
+            return 0; // Get rank for given category
+        }
     }
 
     public static class ServerConfig

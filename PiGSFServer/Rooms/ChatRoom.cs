@@ -22,7 +22,7 @@ namespace PiGSF.Rooms
                     sb.Append($"<li>{m}</li>");
                 }
                 sb.Append("</ul></body></html>");
-                return new Response(200, sb.ToString());
+                return Response.Html(sb.ToString());
             });
         }
 

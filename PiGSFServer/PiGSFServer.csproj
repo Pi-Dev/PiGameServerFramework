@@ -13,9 +13,6 @@
     <SignAssembly>False</SignAssembly>
   </PropertyGroup>
 
-  <ItemGroup>
-    <None Remove="Server\khgkubti.s0b~" />
-  </ItemGroup>
 
   <ItemGroup>
     <Content Include="Resources\pi-server-icon.ico" />
@@ -23,6 +20,10 @@
 
   <ItemGroup>
     <None Include="..\.editorconfig" Link=".editorconfig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RazorGenerator.Templating" Version="2.4.7" />
   </ItemGroup>
 
   <ItemGroup>
