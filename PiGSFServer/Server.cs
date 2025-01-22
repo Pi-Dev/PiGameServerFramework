@@ -327,10 +327,25 @@ namespace PiGSF.Server
             Server.transports.ForEach(x => x.Init(port));
             _isActive = true;
 
-            // SSL File if any
+            // SSL Files - PFX:
             string fnCert = ServerConfig.Get("SSLServerCertPfx"); 
-            if(fnCert.StartsWith("~")) fnCert = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + fnCert.Substring(1);
-            serverCertificate = new X509Certificate2(fnCert, "yourpassword");
+			if(fnCert != "")
+			{
+				if(fnCert.StartsWith("~")) fnCert = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + fnCert.Substring(1);
+				serverCertificate = new X509Certificate2(fnCert, "yourpassword");
+			}
+			
+			// PEM 
+			string certPath = ServerConfig.Get("SSLServerCertPem"); 
+			string keyPath = ServerConfig.Get("SSLServerKeyPem");
+			if (certPath.StartsWith("~")) certPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + certPath.Substring(1);
+			if (keyPath.StartsWith("~")) keyPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + keyPath.Substring(1);
+			if (certPath != "" && keyPath != "")
+			{
+				string certPem = File.ReadAllText(certPath);
+				string keyPem = File.ReadAllText(keyPath);
+				serverCertificate = X509Certificate2.CreateFromPem(certPem, keyPem);
+			}
         }
 
         internal static volatile bool ServerStopRequested = false;
