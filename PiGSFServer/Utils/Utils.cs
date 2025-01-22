@@ -37,19 +37,24 @@ namespace PiGSF.Utils
                 Monitor.Pulse(mutex ?? self);
             }
         }
+        public static T Choose<T>(Random r, params T[] x) => x[r.Next(0, x.Length)];
+        public static T Choose<T>(Random r, IList<T> x) => x[r.Next(0, x.Count)];
+        public static int Choose(Random r, params int[] x) => x[r.Next(0, x.Length)];
+        public static T GetRandomElement<T>(this IList<T> collection, Random r)
+            => collection[r.Next(0, collection.Count)];
+
         public static T Choose<T>(params T[] x) => x[Random.Shared.Next(0, x.Length)];
         public static T Choose<T>(IList<T> x) => x[Random.Shared.Next(0, x.Count)];
         public static int Choose(params int[] x) => x[Random.Shared.Next(0, x.Length)];
-        public static float RandomRange(this (float x, float y) range)
-            => (float)(Random.Shared.NextDouble() * (range.y - range.x) + range.x);
-
         public static T GetRandomElement<T>(this IList<T> collection)
             => collection[Random.Shared.Next(0, collection.Count)];
 
         public static T GetRandomElementByWeight<T>(this IEnumerable<T> sequence, Func<T, float> weightSelector)
+            => GetRandomElementByWeight(sequence, weightSelector, Random.Shared);
+        public static T GetRandomElementByWeight<T>(this IEnumerable<T> sequence, Func<T, float> weightSelector, Random r)
         {
             float totalWeight = sequence.Sum(weightSelector);
-            float itemWeightIndex = (float)(Random.Shared.NextDouble() * totalWeight);
+            float itemWeightIndex = (float)(r.NextDouble() * totalWeight);
             float currentWeightIndex = 0;
             foreach (var item in sequence.Select(weightedItem => new { Value = weightedItem, Weight = weightSelector(weightedItem) }))
             {
