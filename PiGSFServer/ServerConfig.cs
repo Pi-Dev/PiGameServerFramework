@@ -1,6 +1,9 @@
 ﻿using Auth;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Text.Json.Nodes;
+using System.IO;
+using System.Linq;
 
 namespace PiGSF.Server
 {
@@ -13,6 +16,9 @@ namespace PiGSF.Server
         public string username = "guest";
         public string avatarUrl = "";
 
+        // MMR test
+        public int MMR = 1000;
+
         public string ToTableString()
         {
             return
@@ -23,17 +29,17 @@ namespace PiGSF.Server
         }
 
         public override string? ToString() => $"[{id}] {name} = {uid}";
-        public JsonObject ToJsonObject()
-        {
-            var obj = new JsonObject();
-            obj["id"] = id;
-            obj["name"] = name;
-            obj["username"] = username;
-            obj["uid"] = uid;
-            obj["team"] = team;
-            obj["avatarUrl"] = avatarUrl;
-            return obj;
-        }
+        //public JsonObject ToJsonObject()
+        //{
+        //    var obj = new JsonObject();
+        //    obj["id"] = id;
+        //    obj["name"] = name;
+        //    obj["username"] = username;
+        //    obj["uid"] = uid;
+        //    obj["team"] = team;
+        //    obj["avatarUrl"] = avatarUrl;
+        //    return obj;
+        //}
         public int GetRating(string category)
         {
             return 0; // Get rank for given category
@@ -60,7 +66,10 @@ namespace PiGSF.Server
             var fp = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/" + configFile;
             try
             {
-                var config = File.ReadAllLines(fp).Where(l=>!l.StartsWith("#")&&l.Contains("=")).Select(s => s.Split("=", StringSplitOptions.TrimEntries)).ToDictionary(x => x[0], x => x[1]);
+                var config = File.ReadAllLines(fp)
+                    .Where(l => !l.StartsWith("#") && l.Contains("="))
+                    .Select(s => s.Split('='))
+                    .ToDictionary(x => x[0].Trim(), x => x[1].Trim());
                 foreach (var c in config) defaultConfig[c.Key] = c.Value;
             }
             catch (Exception ex)
@@ -92,7 +101,7 @@ namespace PiGSF.Server
         public static int DefaultRoomTimeout = 5;
 
         // Authentication modules by default
-        public static IAuthProvider[] authProviders = [new JWTAuth(), new NoAuth()];
+        public static IAuthProvider[] authProviders = new IAuthProvider[] { /*new JWTAuth(),*/ new NoAuth() };
 
         public static string JWTPrivateKey => LoadFileOrDefault("PIGSF-PRIVATE-JWT.PEM");
         public static string EncryptionPublicKey => LoadFileOrDefault("PIGSF-PUBLIC-RSA.PEM");

@@ -1,16 +1,15 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.Metrics;
 using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace PiGSF.Utils
 {
     public static class Utils
     {
+        public static readonly Random RandomShared = new Random(); // Create a single instance
+
         // Usage: Another thread should be waiting on this queue 
 
         public static void EnqueueAndNotify<T>(this ConcurrentQueue<T> self, T value, object? mutex = null)
@@ -43,14 +42,14 @@ namespace PiGSF.Utils
         public static T GetRandomElement<T>(this IList<T> collection, Random r)
             => collection[r.Next(0, collection.Count)];
 
-        public static T Choose<T>(params T[] x) => x[Random.Shared.Next(0, x.Length)];
-        public static T Choose<T>(IList<T> x) => x[Random.Shared.Next(0, x.Count)];
-        public static int Choose(params int[] x) => x[Random.Shared.Next(0, x.Length)];
+        public static T Choose<T>(params T[] x) => x[RandomShared.Next(0, x.Length)];
+        public static T Choose<T>(IList<T> x) => x[RandomShared.Next(0, x.Count)];
+        public static int Choose(params int[] x) => x[RandomShared.Next(0, x.Length)];
         public static T GetRandomElement<T>(this IList<T> collection)
-            => collection[Random.Shared.Next(0, collection.Count)];
+            => collection[RandomShared.Next(0, collection.Count)];
 
         public static T GetRandomElementByWeight<T>(this IEnumerable<T> sequence, Func<T, float> weightSelector)
-            => GetRandomElementByWeight(sequence, weightSelector, Random.Shared);
+            => GetRandomElementByWeight(sequence, weightSelector, RandomShared);
         public static T GetRandomElementByWeight<T>(this IEnumerable<T> sequence, Func<T, float> weightSelector, Random r)
         {
             float totalWeight = sequence.Sum(weightSelector);

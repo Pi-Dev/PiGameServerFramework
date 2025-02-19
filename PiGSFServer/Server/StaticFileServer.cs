@@ -1,4 +1,7 @@
-﻿namespace PiGSF.Server
+﻿using System;
+using System.IO;
+
+namespace PiGSF.Server
 {
     public class StaticFileServer
     {

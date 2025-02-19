@@ -1,4 +1,7 @@
 ﻿using PiGSF.Utils;
+using System;
+using System.Collections.Generic;
+using System.Threading;
 
 namespace PiGSF.Server
 {
@@ -8,11 +11,12 @@ namespace PiGSF.Server
         public string uid = "anon:guest";
 
         public bool isSpectator;
+        public bool isBot;
 
-        public Action? _CloseConnection;
+        public Action _CloseConnection;
         public Action<byte[]> _SendData;
 
-        public object? UserData { get; set; } // Game-specific user data
+        public object UserData { get; set; } // Game-specific user data
 
         // Caeful with changing this
         public Room activeRoom;
@@ -44,7 +48,10 @@ namespace PiGSF.Server
                 else Disconnect();
             }
         }
-        public void TransferToDefaultLobby() => TransferToRoom(Room.defaultRoom);
+        public void TransferToDefaultLobby()
+        {
+            TransferToRoom(Room.defaultRoom);
+        }
 
         // This joins the player to destination additively, 
         // and by default sets the active room to destination
@@ -61,7 +68,7 @@ namespace PiGSF.Server
         }
 
         internal volatile int isConnected = 1;
-        public bool IsConnected() => isConnected != 0 && _SendData != null;
+        public bool IsConnected() => isBot ? true : isConnected != 0 && _SendData != null;
 
         public Player(int id)
         {

@@ -1,6 +1,4 @@
 ﻿using PiGSF.Server;
-using System;
-using System.Collections.Concurrent;
 using System.Text;
 
 public class ConsoleWriteHandler : TextWriter
@@ -58,6 +56,11 @@ public static class ServerLogger
                     if (filter == "" || (filter != "" && s.ToLower().Contains(filter.ToLower())))
                         sb.Append(s);
 
+        if (WriteMessageToScreenCallback != null)
+        {
+            WriteMessageToScreenCallback(sb.ToString());
+            return;
+        }
         lock (renderLocker)
         {
 			Console.ForegroundColor = ConsoleColor.Gray;
@@ -163,8 +166,16 @@ public static class ServerLogger
 
 	public static string prompt = "";
 	public static string inputBuffer = "";
+
+    public static Action<string>? WriteMessageToScreenCallback;
+
     public static void WriteMessageToScreen(string message)
     {
+        if(WriteMessageToScreenCallback != null)
+        {
+            WriteMessageToScreenCallback(message);
+            return;
+        }
         lock (Console.Out)
         {
 			Console.ForegroundColor = ConsoleColor.Gray;
@@ -174,6 +185,8 @@ public static class ServerLogger
     }
     internal static void WritePrompt()
     {
+        // In embedded pplication mode, Console may not be available (e.g. Unity)
+        if (WriteMessageToScreenCallback != null) return;
         lock (Console.Out)
         {
 			Console.ForegroundColor = ConsoleColor.White;

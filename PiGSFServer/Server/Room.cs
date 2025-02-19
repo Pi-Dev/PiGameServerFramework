@@ -1,5 +1,10 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using PiGSF.Rooms;
 using PiGSF.Utils;
 
@@ -225,7 +230,7 @@ namespace PiGSF.Server
         public static Func<Room> CreateDefaultRoom = () =>
         {
             roomTypes = InitRoomTypes();
-            var tokens = ServerConfig.Get("defaultRoom").Split(",", StringSplitOptions.TrimEntries);
+            var tokens = ServerConfig.Get("defaultRoom").Split(",").Select(s=>s.Trim()).ToArray();
             if (tokens.Length > 1)
             {
                 List<Type> t = roomTypes.Where(x => x.Name.ToLower() == tokens[0].ToLower()).ToList();

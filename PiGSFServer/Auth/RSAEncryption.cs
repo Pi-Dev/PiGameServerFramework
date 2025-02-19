@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Auth
 {
@@ -13,9 +10,15 @@ namespace Auth
         {
             using (var rsa = RSA.Create(bits))
             {
-                string pub = rsa.ExportSubjectPublicKeyInfoPem();
-                string priv = rsa.ExportPkcs8PrivateKeyPem();
-                return (priv, pub);
+                // Export keys as byte arrays
+                byte[] privateKeyBytes = rsa.ExportRSAPrivateKey();
+                byte[] publicKeyBytes = rsa.ExportRSAPublicKey();
+
+                // Convert to Base64 PEM format
+                string privateKeyPem = $"-----BEGIN PRIVATE KEY-----\n{Convert.ToBase64String(privateKeyBytes, Base64FormattingOptions.InsertLineBreaks)}\n-----END PRIVATE KEY-----";
+                string publicKeyPem = $"-----BEGIN PUBLIC KEY-----\n{Convert.ToBase64String(publicKeyBytes, Base64FormattingOptions.InsertLineBreaks)}\n-----END PUBLIC KEY-----";
+
+                return (privateKeyPem, publicKeyPem);
             }
         }
     }

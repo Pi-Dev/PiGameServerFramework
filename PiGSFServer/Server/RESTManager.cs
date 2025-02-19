@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json.Nodes;
 using System.Threading;
 
 namespace PiGSF.Server
@@ -39,7 +38,7 @@ namespace PiGSF.Server
         public static Response Text(string body, int status=200) => new Response(status, "text/plain", body);
         public static Response Html(string body, int status=200) => new Response(status, "text/html", body);
         public static Response Json(string body, int status=200) => new Response(status, "text/json", body);
-        public static Response Json(JsonNode node, int status=200) => new Response(status, "text/json", node.ToJsonString());
+        //public static Response Json(JsonNode node, int status=200) => new Response(status, "text/json", node.ToJsonString());
     }
 
     static class RESTManager

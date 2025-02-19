@@ -32,6 +32,14 @@ namespace PiGSF.Utils
             }
         }
 
+        public List<T> Copy()
+        {
+            lock (_lock)
+            {
+                return new List<T>(_internalList); // Creates a new copy
+            }
+        }
+
         public T this[int index]
         {
             get

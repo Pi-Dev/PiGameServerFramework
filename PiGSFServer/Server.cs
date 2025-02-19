@@ -1,12 +1,16 @@
 ﻿using Auth;
-using PiGSF.Rooms;
 using PiGSF.Utils;
+using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Net.WebSockets;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace PiGSF.Server
 {
@@ -22,13 +26,26 @@ namespace PiGSF.Server
         static ConcurrentDictionary<string, Player> knownPlayersByUid = new();
         static internal ConcurrentList<Player> knownPlayers = new();
         public static Player? GetPlayerByUid(string uid) => knownPlayersByUid!.GetValueOrDefault(uid, null) ?? null;
-        public static Player? GetPlayerById(int id) => knownPlayers.FirstOrDefault(p => p.id == id, null);
+        public static Player? GetPlayerById(int id) => knownPlayers.FirstOrDefault(p => p.id == id);
         public static Player? GetPlayerById(string id)
         {
             if (int.TryParse(id, out int pid)) return GetPlayerById(pid);
             return null;
         }
 
+        // This creates a bot player, useful for testing purposes.
+        // Player is registered, connected, and you can assign _SendData to implement bot logic
+        public static Player CreateBotPlayer(string uid)
+        {
+            var player = new Player(NextPlayerId++);
+            player.isBot = true;
+            player.uid = uid;
+            player.username = "[Bot]";
+            player.name = "[Bot]";
+            knownPlayers.Add(player);
+            knownPlayersByUid[uid] = player;
+            return player;
+        }
 
         static volatile bool _isActive = false;
         public static bool IsActive() => _isActive;
@@ -67,7 +84,7 @@ namespace PiGSF.Server
             string s = command.ToLower();
             if (s == "h" || s == "?" || s == "help")
             {
-                var helpText = """
+                var helpText = @"
                         List of commands
                         help, h, ?  => Displays this
                         f [text]    => Sets log message filter
@@ -84,7 +101,7 @@ namespace PiGSF.Server
                         r [id]      => Shows info for given room by id/name
                         rs [name]   => Searches rooms by name (or shows named rooms)
                         q, b, back  => Exits back to main log
-                        """;
+                        ";
                 ServerLogger.WriteMessageToScreen(helpText);
             }
             else if (s == "")
@@ -138,7 +155,7 @@ namespace PiGSF.Server
             }
             else if (s == "rs")
             {
-                var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
+                var tokens = s.Split(" ").Select(s=>s.Trim()).ToArray();
                 string str = "";
                 string what = "";
                 if (tokens.Length > 0) what = tokens[1];
@@ -152,7 +169,7 @@ namespace PiGSF.Server
             }
             else if (s.StartsWith("l "))
             {
-                var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
+                var tokens = s.Split(" ").Select(s => s.Trim()).ToArray();
                 if (tokens.Length > 1)
                 {
                     var r = Room.GetByName(tokens[1]);
@@ -163,7 +180,7 @@ namespace PiGSF.Server
             }
             else if (s.StartsWith("r "))
             {
-                var tokens = s.Split(" ", StringSplitOptions.TrimEntries);
+                var tokens = s.Split(" ").Select(s => s.Trim()).ToArray();
                 if (tokens.Length > 1)
                 {
                     Room r = null;
@@ -344,8 +361,13 @@ namespace PiGSF.Server
 			{
 				string certPem = File.ReadAllText(certPath);
 				string keyPem = File.ReadAllText(keyPath);
-				serverCertificate = X509Certificate2.CreateFromPem(certPem, keyPem);
-			}
+                if (!string.IsNullOrEmpty(certPath) && !string.IsNullOrEmpty(keyPath))
+                {
+                    byte[] certBytes = File.ReadAllBytes(certPath);
+                    serverCertificate = new X509Certificate2(certBytes, (string)null, X509KeyStorageFlags.PersistKeySet);
+                }
+            }
+
         }
 
         internal static volatile bool ServerStopRequested = false;

@@ -1,10 +1,17 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
+using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using PiGSF.Utils;
 
 namespace PiGSF.Server
@@ -21,12 +28,12 @@ namespace PiGSF.Server
                 client = c;
                 worker = w;
                 stream = c.GetStream();
-                socket = (stream as NetworkStream).Socket;
+                socket = c.Client;
                 ReadMessageState = 0;
             }
             internal TcpClient client;
             internal Socket socket;
-            internal Stream stream;
+            internal System.IO.Stream stream;
             internal IProtocol protocol;
             internal Player player;
             internal TCPSocketWorker worker;
@@ -122,7 +129,7 @@ namespace PiGSF.Server
                 {
                     if (string.IsNullOrWhiteSpace(lines[i])) break;
 
-                    var headerParts = lines[i].Split(':', 2, StringSplitOptions.TrimEntries);
+                    var headerParts = lines[i].Split(':', 2).Select(s=>s.Trim()).ToArray();
                     if (headerParts.Length == 2)
                     {
                         headers[headerParts[0]] = headerParts[1];
@@ -138,11 +145,12 @@ namespace PiGSF.Server
                 {
                     // Handle WebSocket upgrade handshake
                     const string WebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-                    string acceptKey = Convert.ToBase64String(
-                        System.Security.Cryptography.SHA1.HashData(
-                            Encoding.UTF8.GetBytes(clientKey + WebSocketGuid)
-                        )
-                    );
+                    string acceptKey;
+                    using (SHA1 sha1 = SHA1.Create())  // Create SHA1 instance
+                    {
+                        byte[] hash = sha1.ComputeHash(Encoding.UTF8.GetBytes(clientKey + WebSocketGuid));
+                        acceptKey = Convert.ToBase64String(hash);
+                    }
 
                     string switchResp = $"HTTP/1.1 101 Switching Protocols\r\n" +
                                         $"Upgrade: websocket\r\n" +
@@ -218,6 +226,12 @@ namespace PiGSF.Server
                 }
                 if (buffer[0] == 0x16)
                 {
+                    if(Server.serverCertificate == null)
+                    {
+                        client.Close();
+                        disconnectRequested = true;
+                        return;
+                    }
                     Task.Run(() => // TLS Handshake
                     {
                         var sslStream = new SslStream(stream, false);
@@ -233,7 +247,7 @@ namespace PiGSF.Server
                         {
                             if (e.InnerException != null)
                             {
-                                Console.WriteLine("Inner exception: {0}", e.InnerException.Message);
+                                //Console.WriteLine("Inner exception: {0}", e.InnerException.Message);
                             }
                             ServerLogger.Log("Authentication failed - " + e.ToString());
                             sslStream.Close();
@@ -321,7 +335,7 @@ namespace PiGSF.Server
         }
 
         // class with send request for a sender worker
-        class SendPacket()
+        class SendPacket
         {
             internal ClientState state;
             internal byte[] message;

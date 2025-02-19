@@ -4,6 +4,7 @@ using PiGSF.Server;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -52,28 +53,52 @@ namespace PiGSF
         public static void Main(string[] args)
         {
 
-            //TESTS();
-            //return;
-
-
             // this will override the one set in config
             int nextMatch = 0;
             Matchmaker.MatchFound Commence = (players) => {
-                ServerLogger.Log(string.Join(", ", players.Select(x => x.name)) + " matched.");
-                return new ChatRoom($"Match #{nextMatch++}");
+                var room = new ChatRoom($"Match #{nextMatch++}");
+                ServerLogger.Log($"MATCH #{nextMatch-1} => " + string.Join(", ", players.Select(x => x.name)));
+                return room;
             };
             Room.CreateDefaultRoom = () => new Matchmaker(
-                2,5, // min/max per match
-                OnMatchFound: Commence, 
-                SkillFunc: p => p.username[0], // alphabetical ? :D LMAO
-                SkillMinDistance: 2, SkillMaxDistance: 6);
+                2, 100, // min/max per match
+                MaxWaitTime: 15,
+                TickInterval: 5,
+                OnMatchFound: Commence,
+                SkillFunc: p => p.MMR,
+                SkillMinDistance: 80, SkillMaxDistance: 80, 
+                SkillDistIncreasePerTick: 50
+                );
+            //{
+            //    TickRate = 1
+            //};
+
+
 
             // Create a Web Server
-            var wwwpath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) + "/wwwroot";
-            Server.RESTManager.Register("/", new Server.StaticFileServer(wwwpath + "/index.html"));
-            Server.RESTManager.Register("/*", new Server.StaticFileServer(wwwpath));
+            // var wwwpath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) + "/wwwroot";
+            // Server.RESTManager.Register("/", new Server.StaticFileServer(wwwpath + "/index.html"));
+            // Server.RESTManager.Register("/*", new Server.StaticFileServer(wwwpath));
 
-            Server.ServerCLI.Exec();
+            // Start the server
+            ServerCLI.StartServer();
+
+            while (Room.defaultRoom == null) Thread.Sleep(16); // Wait for matchmaker
+
+            // Make some bots
+            var r = new Random(1234);
+            for (int i = 0; i < 1024; i++)
+            {
+                var p = Server.Server.CreateBotPlayer($"bot:{i}");
+                p.MMR = r.Next(0, 1500);
+                p.username = $"#{p.id};MMR={p.MMR}";
+                p.name = p.username;
+                
+                // Queue the player
+                p.JoinRoom(Room.defaultRoom); 
+            }
+
+            ServerCLI.ConsoleInterfaceLoop();
         }
     }
 }

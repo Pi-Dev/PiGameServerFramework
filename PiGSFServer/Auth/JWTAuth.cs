@@ -1,9 +1,13 @@
-﻿using Auth;
+﻿#if USE_AUTH_JWT
+using Auth;
 using PiGSF.Server;
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
+using Newtonsoft.Json;
+using System.Threading.Tasks;
+
 
 // THIS IS NOT SECURE, JUST PLAYING!
 public class JWTAuth: IAuthProvider
@@ -14,7 +18,7 @@ public class JWTAuth: IAuthProvider
     public static string GenerateJwt(Dictionary<string, string> payload)
     {
         var header = Base64UrlEncode("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
-        var payloadJson = System.Text.Json.JsonSerializer.Serialize(payload);
+        var payloadJson = JsonConvert.SerializeObject(payload);
         var payloadEncoded = Base64UrlEncode(payloadJson);
 
         var signature = ComputeSignature($"{header}.{payloadEncoded}");
@@ -44,7 +48,7 @@ public class JWTAuth: IAuthProvider
 
         // Decode and deserialize payload
         var payloadJson = Base64UrlDecode(payloadEncoded);
-        payload = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(payloadJson);
+        payload = JsonConvert.DeserializeObject<Dictionary<string, string>>(payloadJson);
         return true;
     }
 
@@ -90,3 +94,4 @@ public class JWTAuth: IAuthProvider
         return null;
     }
 }
+#endif

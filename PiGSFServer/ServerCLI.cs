@@ -1,4 +1,6 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace PiGSF.Server
 {
@@ -13,14 +15,18 @@ namespace PiGSF.Server
             }
         }
 
-        public static void Exec()
+        public static Thread StartServer()
         {
             ServerLogger.Log("Pi Game Server Framework by Pi-Dev");
             int port = int.Parse(ServerConfig.Get("bindPort"));
-
             var t = new Thread(() => Server.Start(port));
-            t.Name = "Server Thread";
+            t.Name = "Server Thread (Start)";
             t.Start();
+            return t;
+        }
+
+        public static void ConsoleInterfaceLoop()
+        {
             UpdatePromptLoop();
             while (!Server.IsActive()) Thread.Sleep(16);
             while (Server.IsActive())
@@ -50,6 +56,14 @@ namespace PiGSF.Server
                 }
                 /**/
             }
+        }
+
+        public static void Exec()
+        {
+            var t = StartServer();
+            ConsoleInterfaceLoop();
+            t.Join();
+
 
             t.Join();
         }
