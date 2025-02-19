@@ -11,28 +11,29 @@ namespace PiGSF.Rooms
         public delegate Room MatchFound(List<Player> matchedTogether);
         MatchFound _matchFound;
         Action<byte[], Player>? _msgReceivedFunc;
-        Func<Player, int> _skillFunc;
-        int _missGapIncrese = 1;
-        int skillMin, skillMax;
-        int minWait, maxWait;
+        Func<Player, double> _skillFunc;
+        double _missGapIncrease = 1;
+        double SkillWideningDistance;
+        double minWait, maxWait;
         int minNeededPlayers, maxNeededPlayers;
         bool _noGapOnTimeout;
 
         public Matchmaker(int minNeededPlayers, int maxAllowedPlayers,
             MatchFound OnMatchFound,
             int MinWaitTime = 5, int MaxWaitTime = 30, string name = "",
-            int SkillMinDistance = 1, int SkillMaxDistance = 5,
-            int SkillDistIncreasePerTick = 1,
-            int TickInterval = 1,
+            double SkillWideningDistance = 1,
+            double SkillDistIncreasePerTick = 1,
+            double SkillDistMaxIncrease = double.NaN,
+            double TickInterval = 1,
             bool NoSkillGapOnTimeout = true,
-            Func<Player, int>? SkillFunc = null,
+            Func<Player, double>? SkillFunc = null,
             Action<byte[], Player>? MessageReceivedFunc = null
             ) : base(name)
         {
             // PIGSF Room settings:
             MinPlayers = 0;
             MaxPlayers = int.MaxValue;
-            TickRate = 1 / TickInterval;
+            this.TickInterval = TickInterval;
 
             // Matchmaker settings
             maxNeededPlayers = maxAllowedPlayers;
@@ -41,47 +42,48 @@ namespace PiGSF.Rooms
 
             minWait = MinWaitTime;
             maxWait = MaxWaitTime;
-            TickRate = 1000 / TickInterval;
             _msgReceivedFunc = MessageReceivedFunc;
-            _missGapIncrese = SkillDistIncreasePerTick;
+            _missGapIncrease = SkillDistIncreasePerTick;
             _noGapOnTimeout = NoSkillGapOnTimeout;
             _skillFunc = SkillFunc;
 
-            skillMin = Math.Min(SkillMinDistance, SkillMaxDistance);
-            skillMax = Math.Max(SkillMinDistance, SkillMaxDistance);
+            this.SkillWideningDistance = SkillWideningDistance;
             Log.Write($"Matchmaker {Name} started.");
             timer.Start();
         }
 
         Stopwatch timer = new Stopwatch();
-        int MissCount = 0;
 
-        bool MatchmakerTick()
+        Dictionary<Player, double> PlayerWideningProgress;
+
+        public static List<List<(Player p, double mmr)>> CalculateMatchingGroups(List<Player> players, Dictionary<Player, double>? playerWidenings, double defaultWidening, Func<Player, double> _skillFunc, int minNeededPlayers, int maxNeededPlayers, bool allowMinPlayers, double maxWait)
         {
-            
-            if (players.Count < minNeededPlayers) return false;
+            if (players.Count < minNeededPlayers) return new List<List<(Player, double)>>();
 
-            Stopwatch sw = new Stopwatch();
-            sw.Start();
-
-            List<List<(Player, int)>> matchedGroups = new();
+            List<List<(Player, double mmr)>> matchedGroups = new();
             int left = 0;
-            var cp = players.Copy();
-            var plrs = cp.Select(p=> (p, _skillFunc(p))).OrderBy(p => p.Item2).ToList();
+            var plrs = players.Select(p => (p, _skillFunc(p))).OrderBy(p => p.Item2).ToList();
 
-            int currentSkillMin = skillMin + MissCount;
-            int currentSkillMax = skillMax + MissCount;
-            bool isTimeOut = timer.Elapsed.TotalSeconds > maxWait;
+            bool isTimeOut = allowMinPlayers;
 
             for (int right = 0; right < plrs.Count; right++)
             {
-                int mmr = plrs[right].Item2;
+                double mmr = plrs[right].Item2;
+                double wideningRight = playerWidenings != null && playerWidenings.TryGetValue(plrs[right].Item1, out double widenR) ? widenR : defaultWidening;
 
-                // Shrink the window while keeping plrs in range [MMR - currentSkillMin, MMR + currentSkillMax]
-                while (left < right && plrs[left].Item2 < mmr - currentSkillMin) left++;
+                // Shrink the window while keeping plrs in range based on the lower widening factor
+                while (left < right)
+                {
+                    double wideningLeft = playerWidenings != null && playerWidenings.TryGetValue(plrs[left].Item1, out double widenL) ? widenL : defaultWidening;
+                    double effectiveWidening = Math.Min(wideningLeft, wideningRight);
+
+                    if (plrs[left].Item2 >= mmr - effectiveWidening) break;
+                    left++;
+                }
 
                 // Ensure we have enough players in range
                 int windowSize = right - left + 1;
+
                 if (windowSize >= minNeededPlayers)
                 {
                     int matchSize = isTimeOut ? Math.Min(windowSize, maxNeededPlayers) : maxNeededPlayers;
@@ -95,8 +97,19 @@ namespace PiGSF.Rooms
                     }
                 }
             }
+            return matchedGroups;
+        }
 
-            // 5: Process matched groups
+        bool MatchmakerTick()
+        {
+            if (players.Count < minNeededPlayers) return false;
+
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
+
+            bool isTimeOut = timer.Elapsed.TotalSeconds > maxWait;
+            var matchedGroups = CalculateMatchingGroups(players.Copy(), PlayerWideningProgress, SkillWideningDistance, _skillFunc, minNeededPlayers, maxNeededPlayers, isTimeOut, maxWait);
+
             if (matchedGroups.Count > 0)
             {
                 foreach (var match in matchedGroups)
@@ -116,17 +129,25 @@ namespace PiGSF.Rooms
                 }
                 return true;
             }
-            Log.Write($"No match found with: dev={currentSkillMin}..{currentSkillMax} (tick={MissCount}) T = {sw.ElapsedMilliseconds}");
+
             return false;
         }
+
 
         protected override void Update(float dt)
         {
             var found = MatchmakerTick();
-            if (!found) MissCount += _missGapIncrese;
+            if (!found)
+            {
+                foreach(var p in players)
+                {
+                    if (!PlayerWideningProgress.ContainsKey(p))
+                        PlayerWideningProgress[p] = SkillWideningDistance;
+                    PlayerWideningProgress[p] += _missGapIncrease;
+                }
+            }
             else
             {
-                MissCount = 0;
                 timer.Restart();
             }
         }
