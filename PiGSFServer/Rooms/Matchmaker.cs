@@ -1,8 +1,8 @@
-﻿using System.Text;
-using PiGSF.Server;
-using System.Text.Json.Nodes;
-using RazorGenerator.Templating;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Diagnostics;
+using PiGSF.Server;
 
 namespace PiGSF.Rooms
 {
@@ -44,63 +44,137 @@ namespace PiGSF.Rooms
             Log.Write($"Matchmaker {Name} started.");
             timer.Start();
         }
+
         Stopwatch timer = new Stopwatch();
-        int MissCount = 0; // The more ticks, the big this value becomes, altering the SkillMinDistance / SkillMaxDistance tollerance
+        int MissCount = 0;
+
         bool MatchmakerTick()
         {
             if (players.Count < MinPlayers)
                 return false; // Not enough players to form a match
 
-            // Determine if timeout occurred
             bool isTimeOut = timer.Elapsed.TotalSeconds > maxWait;
+            int currentSkillMin = skillMin - MissCount;
+            int currentSkillMax = skillMax + MissCount;
 
-            // Adjust skill range based on miss count and timeout status
-            int currentSkillMin = skillMin + MissCount;
-            int currentSkillMax = Math.Min(skillMax, skillMin + MissCount);
-
-            // If timeout occurs and NoSkillGapOnTimeout is true, allow matching regardless of skill gaps
             if (isTimeOut && _noGapOnTimeout)
             {
-                currentSkillMin = int.MinValue; // No lower limit
-                currentSkillMax = int.MaxValue; // No upper limit
+                Log.Write("Matchmaker timeout reached, ignoring skill gaps.");
+                currentSkillMin = int.MinValue;
+                currentSkillMax = int.MaxValue;
             }
 
-            // Match players
-            List<Player> matchedPlayers;
-            if (_skillFunc == null)
-            {
-                // Randomly match players
-                matchedPlayers = players.OrderBy(_ => Guid.NewGuid()).Take(MinPlayers).ToList();
-            }
-            else
-            {
-                // Match players based on skill within the allowed range
-                matchedPlayers = players
-                    .Where(p => _skillFunc(p) >= currentSkillMin && _skillFunc(p) <= currentSkillMax)
-                    .Take(MinPlayers)
-                    .ToList();
-            }
+            // 1-1: Collect players into a local list
+            List<Player> localPlayers = players.Copy();
 
-            // If enough players are matched, create a room
-            if (matchedPlayers.Count >= MinPlayers)
-            {
-                // Create a new room using the provided factory delegate
-                Room newRoom = _matchFound(matchedPlayers);
+            // 1-2: Compute and store skill values
+            List<(Player player, int skill)> playerSkillPairs = localPlayers
+                .Select(p => (p, _skillFunc(p)))
+                .ToList();
 
-                // Remove matched players from the queue
-                foreach (var player in matchedPlayers)
+            // 1-3: Sort players by skill
+            playerSkillPairs.Sort((a, b) => a.skill.CompareTo(b.skill));
+
+            // 1-4: Pre-group players by skill level
+            Dictionary<int, List<Player>> skillBuckets = new Dictionary<int, List<Player>>();
+            foreach (var (player, skill) in playerSkillPairs)
+            {
+                if (!skillBuckets.ContainsKey(skill))
                 {
-                    players.Remove(player);
+                    skillBuckets[skill] = new List<Player>();
+                }
+                skillBuckets[skill].Add(player);
+            }
+
+            // 1-5: Initialize necessary data structures
+            List<List<Player>> validGroups = new List<List<Player>>();
+            int left = 0;
+
+            // 1-6: Iterate through players
+            for (int right = 0; right < playerSkillPairs.Count; right++)
+            {
+                var (rightPlayer, rightSkill) = playerSkillPairs[right];
+
+                // 1-7: Shrink window efficiently
+                while (left < right && (rightSkill - playerSkillPairs[left].skill) > currentSkillMax)
+                {
+                    left++;
                 }
 
-                Log.Write($"Match created: {newRoom.Name} with {matchedPlayers.Count} players.");
-                return true; // Match successfully created
+                // 1-8: Collect players within range using skill buckets
+                List<Player> potentialGroup = new List<Player>();
+                for (int skill = rightSkill - currentSkillMax; skill <= rightSkill + currentSkillMax; skill++)
+                {
+                    if (skillBuckets.ContainsKey(skill))
+                    {
+                        foreach (var candidate in skillBuckets[skill])
+                        {
+                            int diff = Math.Abs(rightSkill - skill);
+                            if (diff >= currentSkillMin)
+                            {
+                                potentialGroup.Add(candidate);
+                            }
+                        }
+                    }
+                }
+
+                // 1-9: Validate group size
+                if (potentialGroup.Count >= MinPlayers && potentialGroup.Count <= MaxPlayers)
+                {
+                    validGroups.Add(potentialGroup);
+                }
             }
 
-            return false; // No match was made
+            // 🔧 Fix 3: Remove duplicate groups efficiently (Sorting inside HashSet Key)
+            HashSet<string> uniqueGroups = new HashSet<string>();
+            validGroups = validGroups
+                .Where(g => uniqueGroups.Add(string.Join(",", g.OrderBy(p => p.uid).Select(p => p.uid))))
+                .ToList();
+
+            // 3: Form max-player matches first
+            List<List<Player>> matchedGroups = validGroups
+                .Where(g => g.Count == MaxPlayers)
+                .ToList();
+
+            // 4: If timed out, use the largest available group
+            if (isTimeOut && matchedGroups.Count == 0)
+            {
+                var bestAvailableGroup = validGroups
+                    .Where(g => g.Count >= MinPlayers)
+                    .OrderByDescending(g => g.Count) // **Fix 5 Stays the Same**
+                    .FirstOrDefault();
+
+                if (bestAvailableGroup != null)
+                {
+                    matchedGroups.Add(bestAvailableGroup);
+                }
+            }
+
+            // 5: Process matched groups
+            if (matchedGroups.Count > 0)
+            {
+                foreach (var match in matchedGroups)
+                {
+                    try
+                    {
+                        Room newRoom = _matchFound(match);
+                        foreach (var player in match)
+                        {
+                            players.Remove(player);
+                        }
+                        Log.Write($"Match created: {newRoom.Name} with {match.Count} players.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Write($"Error creating match: {ex.Message}");
+                    }
+                }
+                return true;
+            }
+
+            Log.Write($"Matchmaker found only {players.Count}/{MinPlayers} players within skill range ({currentSkillMin} - {currentSkillMax}).");
+            return false;
         }
-
-
 
         protected override void Update(float dt)
         {
@@ -121,13 +195,12 @@ namespace PiGSF.Rooms
 
         protected override void OnServerCommand(string s)
         {
-            // MM can be forced from console / management eventually
         }
 
         protected override void OnShutdownRequested()
         {
             base.OnShutdownRequested();
-            eligibleForDeletion = true; // Matchmakers become eligible for instant deletion
+            eligibleForDeletion = true;
         }
     }
 }
