@@ -58,6 +58,7 @@ namespace PiGSF.Rooms
 
         bool MatchmakerTick()
         {
+            
             if (players.Count < minNeededPlayers) return false;
 
             Stopwatch sw = new Stopwatch();
@@ -70,25 +71,28 @@ namespace PiGSF.Rooms
 
             int currentSkillMin = skillMin + MissCount;
             int currentSkillMax = skillMax + MissCount;
-            bool isTimeOut = timer.Elapsed.Seconds > maxWait;
+            bool isTimeOut = timer.Elapsed.TotalSeconds > maxWait;
 
             for (int right = 0; right < plrs.Count; right++)
             {
                 int mmr = plrs[right].Item2;
 
-                // Shrink the window while keeping plrs in range [MMR-currentSkillMin, MMR+currentSkillMax]
+                // Shrink the window while keeping plrs in range [MMR - currentSkillMin, MMR + currentSkillMax]
                 while (left < right && plrs[left].Item2 < mmr - currentSkillMin) left++;
 
-                // Ensure we have exactly maxNeededPlayers plrs in range
+                // Ensure we have enough players in range
                 int windowSize = right - left + 1;
-                if (windowSize >= maxNeededPlayers)
+                if (windowSize >= minNeededPlayers)
                 {
-                    // Take exactly maxNeededPlayers plrs for a match
-                    // CHANGE: if isTimeOut, allow between minNeededPlayers and maxNeededPlayers
-                    matchedGroups.Add(plrs.GetRange(left, maxNeededPlayers));
+                    int matchSize = isTimeOut ? Math.Min(windowSize, maxNeededPlayers) : maxNeededPlayers;
 
-                    // Move left pointer forward to ensure non-overlapping matches
-                    left += maxNeededPlayers;
+                    if (windowSize >= matchSize)
+                    {
+                        matchedGroups.Add(plrs.GetRange(left, matchSize));
+
+                        // Move left pointer forward to prevent overlap
+                        left += matchSize;
+                    }
                 }
             }
 
