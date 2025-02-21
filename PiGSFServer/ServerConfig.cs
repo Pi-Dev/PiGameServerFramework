@@ -17,7 +17,7 @@ namespace PiGSF.Server
         public string avatarUrl = "";
 
         // MMR test
-        public int MMR = 1000;
+        public double MMR = 1000;
 
         public string ToTableString()
         {

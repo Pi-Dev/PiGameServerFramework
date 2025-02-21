@@ -17,7 +17,7 @@ namespace PiGSF.Server
                 string filePath = Path.Combine(_baseDirectory, relativePath);
                 if (!File.Exists(filePath)) return new Response(404, "text/plain", "File Not Found");
                 string contentType = GetContentType(filePath);
-                string fileContent = File.ReadAllText(filePath);
+                byte[] fileContent = File.ReadAllBytes(filePath);
                 return new Response(200, contentType, fileContent);
             }
             catch (Exception ex)

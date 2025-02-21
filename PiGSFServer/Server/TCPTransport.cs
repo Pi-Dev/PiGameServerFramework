@@ -29,6 +29,8 @@ namespace PiGSF.Server
                 worker = w;
                 stream = c.GetStream();
                 socket = c.Client;
+                socket.NoDelay = true;
+                socket.Blocking = false;
                 ReadMessageState = 0;
             }
             internal TcpClient client;
@@ -180,7 +182,7 @@ namespace PiGSF.Server
                 try
                 {
                     response = RESTManager.HandleRequest(request);
-                    if (response.Body == null) throw new Exception("Null HTTP Response");
+                    if (response.Body == null && response.BinaryData == null) throw new Exception("Null HTTP Response");
                 }
                 catch (Exception ex)
                 {
@@ -188,13 +190,24 @@ namespace PiGSF.Server
                 }
 
                 // Build and send HTTP response
-                string httpResponse = $"HTTP/1.1 {response.StatusCode} {GetStatusMessage(response.StatusCode)}\r\n" +
-                                      $"Content-Type: {response.ContentType}\r\n" +
-                                      $"Content-Length: {Encoding.UTF8.GetByteCount(response.Body)}\r\n" +
-                                      string.Join("", response.ExtraHeaders.Select(header => $"{header.Key}: {header.Value}\r\n")) +
-                                      "\r\n" + response.Body;
+                int byteCount = response.BinaryData != null ? response.BinaryData.Length : Encoding.UTF8.GetByteCount(response!.Body);
 
-                byte[] httpRespBytes = Encoding.UTF8.GetBytes(httpResponse);
+                string httpResponse = $"HTTP/1.1 {response.StatusCode} {GetStatusMessage(response.StatusCode)}\r\n" +
+                                      $"Content-Type: {byteCount}\r\n" +
+                                      $"Content-Length: {byteCount}\r\n" +
+                                      $"Connection: Close\r\n" +
+                                      string.Join("", response.ExtraHeaders.Select(header => $"{header.Key}: {header.Value}\r\n")) +
+                                      "\r\n";
+
+                byte[] httpRespBytes;
+                if (response.BinaryData != null)
+                {
+                    httpRespBytes = Enumerable.Concat(Encoding.UTF8.GetBytes(httpResponse), response.BinaryData).ToArray();
+                }
+                else
+                {
+                    httpRespBytes = Encoding.UTF8.GetBytes(httpResponse + response.Body);
+                }
                 stream.Write(httpRespBytes, 0, httpRespBytes.Length);
                 stream.Flush();
                 client.Close();

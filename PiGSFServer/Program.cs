@@ -33,7 +33,7 @@ namespace PiGSF
             };
             print(0);
 
-            for(int i = 0; i < 1000; i++)
+            for(int i = 0; i < 10000; i++)
             {
                 var outcome = (GDSkill.GameOutcome) Utils.Utils.Choose(seeded, 0,0,0,0,0,1);
                 GDSkill.UpdateRatings(p1, p2, outcome); print(outcome==GDSkill.GameOutcome.Side2Won?1:0);
@@ -52,7 +52,6 @@ namespace PiGSF
 
         public static void Main(string[] args)
         {
-
             // this will override the one set in config
             int nextMatch = 0;
             Matchmaker.MatchFound Commence = (players) => {
@@ -61,12 +60,12 @@ namespace PiGSF
                 return room;
             };
             Room.CreateDefaultRoom = () => new Matchmaker(
-                2, 100, // min/max per match
-                MaxWaitTime: 15,
+                6, 10, // min/max per match
+                MaxWaitTime: 60,
                 TickInterval: 5,
                 OnMatchFound: Commence,
                 SkillFunc: p => p.MMR,
-                SkillMinDistance: 80, SkillMaxDistance: 80, 
+                SkillWideningDistance: 80, 
                 SkillDistIncreasePerTick: 50
                 );
             //{
@@ -76,9 +75,9 @@ namespace PiGSF
 
 
             // Create a Web Server
-            // var wwwpath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) + "/wwwroot";
-            // Server.RESTManager.Register("/", new Server.StaticFileServer(wwwpath + "/index.html"));
-            // Server.RESTManager.Register("/*", new Server.StaticFileServer(wwwpath));
+            var wwwpath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) + "/wwwroot";
+            RESTManager.Register("/", new StaticFileServer(wwwpath + "/index.html"));
+            RESTManager.Register("/*", new StaticFileServer(wwwpath));
 
             // Start the server
             ServerCLI.StartServer();
@@ -87,10 +86,10 @@ namespace PiGSF
 
             // Make some bots
             var r = new Random(1234);
-            for (int i = 0; i < 1024; i++)
+            for (int i = 0; i < 4; i++)
             {
                 var p = Server.Server.CreateBotPlayer($"bot:{i}");
-                p.MMR = r.Next(0, 1500);
+                p.MMR = r.Next(60, 400);
                 p.username = $"#{p.id};MMR={p.MMR}";
                 p.name = p.username;
                 

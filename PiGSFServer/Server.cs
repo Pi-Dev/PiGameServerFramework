@@ -114,7 +114,7 @@ namespace PiGSF.Server
                     var sb = new StringBuilder();
                     sb.AppendLine($"Status: {room.Status}");
                     sb.AppendLine($"Players (Current/Max/Seen): ({pd.connected}/{room.MaxPlayers}/{pd.total})");
-                    sb.AppendLine($"Vars: minP={room.MinPlayers} maxP={room.MaxPlayers} stared={room.IsStarted} TR={room.TickRate}");
+                    sb.AppendLine($"Vars: minP={room.MinPlayers} maxP={room.MaxPlayers} stared={room.IsStarted} TI={room.TickInterval}");
                     ServerLogger.WriteMessageToScreen(sb.ToString());
 
                 }

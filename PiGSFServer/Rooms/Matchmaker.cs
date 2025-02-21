@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
 using PiGSF.Server;
+using System.Text;
 
 namespace PiGSF.Rooms
 {
@@ -54,9 +55,12 @@ namespace PiGSF.Rooms
 
         Stopwatch timer = new Stopwatch();
 
-        Dictionary<Player, double> PlayerWideningProgress;
+        Dictionary<Player, double> PlayerWideningProgress = new();
 
-        public static List<List<(Player p, double mmr)>> CalculateMatchingGroups(List<Player> players, Dictionary<Player, double>? playerWidenings, double defaultWidening, Func<Player, double> _skillFunc, int minNeededPlayers, int maxNeededPlayers, bool allowMinPlayers, double maxWait)
+        public static List<List<(Player p, double mmr)>> CalculateMatchingGroups(
+            List<Player> players, Dictionary<Player, double>? playerWidenings, double defaultWidening, 
+            Func<Player, double> _skillFunc, int minNeededPlayers, int maxNeededPlayers, 
+            bool allowMinPlayers, double maxWait)
         {
             if (players.Count < minNeededPlayers) return new List<List<(Player, double)>>();
 
@@ -156,7 +160,11 @@ namespace PiGSF.Rooms
             => RemovePlayer(player);
 
         protected override void OnMessageReceived(byte[] message, Player sender)
-            => _msgReceivedFunc?.Invoke(message, sender);
+        {
+            var text = Encoding.UTF8.GetString(message);
+            Log.Write($"[{Name}] {sender.name}: {text}");
+            _msgReceivedFunc?.Invoke(message, sender);
+        }
 
         protected override void OnServerCommand(string s)
         {

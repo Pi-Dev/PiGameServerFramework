@@ -17,7 +17,7 @@ namespace PiGSF.Server
         public readonly string Name;
 
         // Room properties
-        public int TickRate = 60;
+        public double TickInterval = 1.0 / 60.0; // Default to 60 ticks per second
         public int MinPlayers = 1;
         public int MaxPlayers = 16;
         public int MaxClients = 32;
@@ -98,10 +98,10 @@ namespace PiGSF.Server
             ServerLogger.Log("Thread for room " + GetType().Name + " started");
 
             // 1. Determine when first Update must be called
-            var t = new Stopwatch(); t.Start();
-            long tickInterval = Stopwatch.Frequency / TickRate; // Ticks for 1 / TickRate seconds
-            long NextUpdateTick = t.ElapsedTicks + tickInterval;
-
+            var stopwatch = new Stopwatch();
+            stopwatch.Start();
+            long tickIntervalTicks = (long)(Stopwatch.Frequency * TickInterval);
+            long nextUpdateTick = stopwatch.ElapsedTicks + tickIntervalTicks;
             try
             {
                 while (true) // breaks when RoomStopEvent received
@@ -109,27 +109,24 @@ namespace PiGSF.Server
                     Thread.Yield(); // Yield hint for others to run...
 
                     // 1. Process messages until close to next update time or queue is empty
-                    while (t.ElapsedTicks < NextUpdateTick - Stopwatch.Frequency / 1000 * 1
+                    while (stopwatch.ElapsedTicks < nextUpdateTick - Stopwatch.Frequency / 1000 * 1
                         && messageQueue.TryDequeue(out var item))
                         if (!RoomThreadProcessEvent(item)) goto EndOfThread;
 
                     // 2. WAIT! Sleep the thread for a short time to avoid busy-waiting
-                    long currentTicks = t.ElapsedTicks;
-                    int timeout = (int)Math.Max(1, (NextUpdateTick - currentTicks) * 1000 / Stopwatch.Frequency); // Convert ticks to ms
+                    long currentTicks = stopwatch.ElapsedTicks;
+                    int timeout = (int)Math.Max(1, (nextUpdateTick - currentTicks) * 1000 / Stopwatch.Frequency);
                     if (timeout > 0) lock (messageQueue) Monitor.Wait(messageQueue, timeout);
 
                     // 3. Finally, call Update
-                    if (t.ElapsedTicks >= NextUpdateTick)
+                    if (stopwatch.ElapsedTicks >= nextUpdateTick)
                     {
-                        Update((float)tickInterval / Stopwatch.Frequency);
+                        Update((float)TickInterval);
+                        nextUpdateTick = stopwatch.ElapsedTicks + tickIntervalTicks;
 
-                        // Schedule the next update
-                        NextUpdateTick += tickInterval;
-
-                        // Adjust in case of excessive delay
-                        if (t.ElapsedTicks > NextUpdateTick)
+                        if (stopwatch.ElapsedTicks > nextUpdateTick)
                         {
-                            NextUpdateTick = t.ElapsedTicks + tickInterval;
+                            nextUpdateTick = stopwatch.ElapsedTicks + tickIntervalTicks;
                         }
                     }
                 }

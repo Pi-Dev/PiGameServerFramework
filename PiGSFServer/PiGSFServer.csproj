@@ -11,6 +11,7 @@
     <ApplicationIcon>Resources\pi-server-icon.ico</ApplicationIcon>
     <RootNamespace>PiGSF</RootNamespace>
     <SignAssembly>False</SignAssembly>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
 

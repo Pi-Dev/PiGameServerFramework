@@ -27,6 +27,7 @@ namespace PiGSF.Server
         public int StatusCode { get; set; }
         public string ContentType { get; set; }
         public string Body { get; set; }
+        public byte[] BinaryData { get; set; }
         public Dictionary<string, string> ExtraHeaders { get; set; } = new Dictionary<string, string>();
         public void AddHeader(string key, string value) => ExtraHeaders[key] = value;
         public Response(int statusCode, string contentType, string body)
@@ -35,6 +36,13 @@ namespace PiGSF.Server
             ContentType = contentType;
             Body = body;
         }
+        public Response(int statusCode, string contentType, byte[] data)
+        {
+            StatusCode = statusCode;
+            ContentType = contentType;
+            BinaryData = data;
+        }
+        public static Response Binary(byte[] data, int status=200) => new Response(status, "text/plain", data);
         public static Response Text(string body, int status=200) => new Response(status, "text/plain", body);
         public static Response Html(string body, int status=200) => new Response(status, "text/html", body);
         public static Response Json(string body, int status=200) => new Response(status, "text/json", body);
