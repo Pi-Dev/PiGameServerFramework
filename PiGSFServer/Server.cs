@@ -361,11 +361,15 @@ namespace PiGSF.Server
 			{
 				string certPem = File.ReadAllText(certPath);
 				string keyPem = File.ReadAllText(keyPath);
-                if (!string.IsNullOrEmpty(certPath) && !string.IsNullOrEmpty(keyPath))
-                {
-                    byte[] certBytes = File.ReadAllBytes(certPath);
-                    serverCertificate = new X509Certificate2(certBytes, (string)null, X509KeyStorageFlags.PersistKeySet);
-                }
+
+                // Loading from PEM
+                serverCertificate = X509Certificate2.CreateFromPem(certPem, keyPem);
+
+                // if (!string.IsNullOrEmpty(certPath) && !string.IsNullOrEmpty(keyPath))
+                // {
+                //     byte[] certBytes = File.ReadAllBytes(certPath);
+                //     serverCertificate = new X509Certificate2(certBytes, (string)null, X509KeyStorageFlags.PersistKeySet);
+                // }
             }
 
         }
