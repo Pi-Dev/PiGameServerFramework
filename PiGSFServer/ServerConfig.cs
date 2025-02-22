@@ -53,7 +53,7 @@ namespace PiGSF.Server
             // Default config, hard-coded, and very limited.
             // You are supposed to build the server and implement your game types
             var defaultConfig = new Dictionary<string, string>() {
-                { "DefaultRoomTimeout", "30" },
+                { "DefaultRoomConnectionTimeout", "30" },
                 { "bindAddress", "0.0.0.0" },
                 { "bindPort", "12345" },
                 { "defaultRoom", "ChatRoom,Lobby" },
@@ -98,7 +98,9 @@ namespace PiGSF.Server
         // Room configuration
 
         // Time to keep room if no players reconnect
-        public static int DefaultRoomTimeout = 5;
+        public static int KeepRoomIfNoPlayersReconnect = 300;
+        // Time before disconnecting player who did not sent message
+        public static int DefaultRoomConnectionTimeout = 300;
 
         // Authentication modules by default
         public static IAuthProvider[] authProviders = new IAuthProvider[] { /*new JWTAuth(),*/ new NoAuth() };

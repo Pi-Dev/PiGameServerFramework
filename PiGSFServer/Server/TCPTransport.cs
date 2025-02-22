@@ -502,9 +502,15 @@ namespace PiGSF.Server
                         foreach (var wc in readableClients)
                         {
                             if (!wc.client.Connected) { wc.disconnectRequested = true; }
+                            
                             // disconnect telnet clients / stale connections with no protocol
-                            if (ts > wc.lastRecvTime + 30 && (wc.player == null || wc.protocol == null)) { wc.disconnectRequested = true; }
-                            if (ts > wc.lastRecvTime + 60*5) { wc.disconnectRequested = true; } // 5 minutes global timeout
+                            if (ts > wc.lastRecvTime + 30 && (wc.player == null || wc.protocol == null))
+                                wc.disconnectRequested = true;
+                            if (wc.player != null && wc.player.activeRoom != null
+                                && wc.player.activeRoom.ConnectionTimeout > 0 && ts > wc.lastRecvTime + wc.player.activeRoom.ConnectionTimeout)
+                                wc.disconnectRequested = true;
+                            if (ts > wc.lastRecvTime + 60 * 5) wc.disconnectRequested = true;  // 5 minutes global timeout
+
                             if (wc.disconnectRequested)
                             {
                                 //ServerLogger.Log($"TCP Receiver handled disc for {wc.player?.name}");

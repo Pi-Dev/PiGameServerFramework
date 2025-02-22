@@ -27,7 +27,7 @@ namespace PiGSF.Server
         public bool AllowSpectators = true;
         public string Status = ""; // Set to anything, e.g. Turn X, or Matchmaking, to be used in clients
 
-        public int RoomTimeout = ServerConfig.DefaultRoomTimeout;
+        public int ConnectionTimeout = ServerConfig.DefaultRoomConnectionTimeout;
         public int PlayerDisbandTimeout = -1;
 
         // Connected players and banned players
