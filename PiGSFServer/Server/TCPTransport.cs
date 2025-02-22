@@ -31,6 +31,8 @@ namespace PiGSF.Server
                 socket = c.Client;
                 socket.NoDelay = true;
                 socket.Blocking = false;
+                socket.ReceiveTimeout = 10000;
+                socket.SendTimeout = 10000;
                 ReadMessageState = 0;
             }
             internal TcpClient client;
