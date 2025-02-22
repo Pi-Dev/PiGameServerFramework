@@ -131,7 +131,7 @@ namespace PiGSF.Server
                 {
                     if (string.IsNullOrWhiteSpace(lines[i])) break;
 
-                    var headerParts = lines[i].Split(':', 2).Select(s=>s.Trim()).ToArray();
+                    var headerParts = lines[i].Split(':', 2).Select(s => s.Trim()).ToArray();
                     if (headerParts.Length == 2)
                     {
                         headers[headerParts[0]] = headerParts[1];
@@ -161,6 +161,7 @@ namespace PiGSF.Server
                     byte[] resp = Encoding.UTF8.GetBytes(switchResp);
                     stream.Write(resp, 0, resp.Length);
                     stream.Flush();
+                    //socket.Blocking = false;
 
                     var wsp = new WebSocketProtocol();
                     wsp.compressed = supportPerMessageDeflate;
@@ -170,9 +171,9 @@ namespace PiGSF.Server
                 }
 
                 // Not a WebSocket upgrade; handle as a normal HTTP request
+                //socket.Blocking = false;
                 var bodyIndex = httpRequest.IndexOf("\r\n\r\n") + 4;
                 string body = bodyIndex < httpRequest.Length ? httpRequest.Substring(bodyIndex) : string.Empty;
-
                 var request = new Request(method, path, body)
                 {
                     Headers = headers
@@ -235,11 +236,12 @@ namespace PiGSF.Server
                     var hs = stream.Read(buf, 0, 2);
                     protocol = new GameServerProtocol();
                     IsProtocolInitializing = false;
+                    //socket.Blocking = false;
                     return;
                 }
                 if (buffer[0] == 0x16)
                 {
-                    if(Server.serverCertificate == null)
+                    if (Server.serverCertificate == null)
                     {
                         client.Close();
                         disconnectRequested = true;
@@ -247,6 +249,7 @@ namespace PiGSF.Server
                     }
                     Task.Run(() => // TLS Handshake
                     {
+                        socket.Blocking = true;
                         var sslStream = new SslStream(stream, false);
                         try
                         {
@@ -255,6 +258,7 @@ namespace PiGSF.Server
                             var buffer = new byte[4196];
                             int bytesRead = sslStream.Read(buffer, 0, buffer.Length);
                             HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, bytesRead), true);
+                            socket.Blocking = false;
                         }
                         catch (AuthenticationException e)
                         {
@@ -543,7 +547,11 @@ namespace PiGSF.Server
                                         }
                                     }
                                 }
-                                catch (IOException) { state.player?.Disconnect(); }
+                                catch (IOException ex) when ( 
+                                    ex.InnerException is SocketException socketEx
+                                    && socketEx.SocketErrorCode == SocketError.WouldBlock)
+                                { }
+                                catch (IOException e) { state.player?.Disconnect(); }
                                 catch (ObjectDisposedException) { state.player?.Disconnect(); }
                                 catch (Exception ex) { state.player?.Disconnect(); ServerLogger.Log(ex.ToString()); }
                             }
