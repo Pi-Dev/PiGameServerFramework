@@ -513,16 +513,18 @@ namespace PiGSF.Server
                         socketsToRead.Clear();
                         foreach (var s in readableClients) socketsToRead.Add(s.socket);
                         if (socketsToRead.Count == 0) continue;
-
+                        bool cleanup = false;
                         try
                         {
                             active = false;
                             Socket.Select(socketsToRead, null, null, 5000); // usual parking place
                             active = true; // if true the worker will be preferred for new clients
                         }
-                        catch (SocketException ex) { }
-                        catch (ObjectDisposedException ex) { }
+                        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.Interrupted) { cleanup = true; }
+                        catch (SocketException ex) { cleanup = true; }
+                        catch (ObjectDisposedException ex) { cleanup = true; }
                         catch (Exception ex) { ServerLogger.Log(ex.ToString()); }
+                        if (cleanup) socketsToRead.RemoveAll(socket => socket == null || !socket.Connected);
 
                         foreach (var s in socketsToRead)
                         {
@@ -547,7 +549,11 @@ namespace PiGSF.Server
                                         }
                                     }
                                 }
-                                catch (IOException ex) when ( 
+                                catch (IOException ex) when (
+                                    ex.InnerException is SocketException socketEx
+                                    && socketEx.SocketErrorCode == SocketError.ConnectionReset)
+                                { }
+                                catch (IOException ex) when (
                                     ex.InnerException is SocketException socketEx
                                     && socketEx.SocketErrorCode == SocketError.WouldBlock)
                                 { }
