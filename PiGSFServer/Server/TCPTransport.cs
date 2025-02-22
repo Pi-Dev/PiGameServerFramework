@@ -33,6 +33,9 @@ namespace PiGSF.Server
                 socket.Blocking = false;
                 socket.ReceiveTimeout = 10000;
                 socket.SendTimeout = 10000;
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 3);         // First probe after 3 sec
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 2);     // Subsequent probes every 2 sec
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3);   // 3 failed probes before closing
                 ReadMessageState = 0;
             }
             internal TcpClient client;
