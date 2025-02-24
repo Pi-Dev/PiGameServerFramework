@@ -569,10 +569,10 @@ namespace PiGSF.Server
                                         }
                                     }
                                 }
-                                catch (IOException ex) when (
-                                    ex.InnerException is SocketException socketEx
-                                    && socketEx.SocketErrorCode == SocketError.ConnectionReset)
-                                { }
+                                //catch (IOException ex) when (
+                                //    ex.InnerException is SocketException socketEx
+                                //    && socketEx.SocketErrorCode == SocketError.ConnectionReset)
+                                //{ state.player?.Disconnect(); }
                                 catch (IOException ex) when (
                                     ex.InnerException is SocketException socketEx
                                     && socketEx.SocketErrorCode == SocketError.WouldBlock)

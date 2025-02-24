@@ -64,5 +64,15 @@ namespace PiGSF.Utils
             return default;
         }
 
+        // Weighted Random
+        public class Weighted<T>
+        {
+            public T item;
+            public float weight;
+        }
+        public static T GetByWeight<T>(this ICollection<Weighted<T>> collection)
+        {
+            return collection.GetRandomElementByWeight(x => x.weight).item;
+        }
     }
 }

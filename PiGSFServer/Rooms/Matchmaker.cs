@@ -28,13 +28,15 @@ namespace PiGSF.Rooms
             double TickInterval = 1,
             bool NoSkillGapOnTimeout = true,
             Func<Player, double>? SkillFunc = null,
-            Action<byte[], Player>? MessageReceivedFunc = null
+            Action<byte[], Player>? MessageReceivedFunc = null,
+            int ConnectionTimeout = 30
             ) : base(name)
         {
             // PIGSF Room settings:
             MinPlayers = 0;
             MaxPlayers = int.MaxValue;
             this.TickInterval = TickInterval;
+            this.ConnectionTimeout = ConnectionTimeout;
 
             // Matchmaker settings
             maxNeededPlayers = maxAllowedPlayers;

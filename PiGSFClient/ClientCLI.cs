@@ -260,7 +260,7 @@ namespace PiGSF.Client
             t.Start();
             long nt = t.ElapsedMilliseconds + 1 + 500 * new Random().Next(0, 10);
             //Thread.Sleep(new TimeSpan(0, 3, 0));
-            client.SendString("Hello fellows!");
+            client.SendString($"Hello fellows! [nt={nt}]");
 
             while (true)
             {
@@ -270,9 +270,10 @@ namespace PiGSF.Client
                 }
                 if(t.ElapsedMilliseconds > nt)
                 {
-                    nt = t.ElapsedMilliseconds + 1 + 500 * new Random().Next(0, 10);
+                    var nextTime = 1 + 1000 * new Random().Next(0, 10);
+                    nt = t.ElapsedMilliseconds + nextTime;
                     string randomMessage = messages[new Random().Next(messages.Length)];
-                    client.SendString(randomMessage);
+                    client.SendString(randomMessage + $" [nt={nextTime}]");
                 }
             }
 
