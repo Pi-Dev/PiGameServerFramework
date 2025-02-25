@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace PiGSF.Server
 {
-    class ServerCLI
+    public class ServerCLI
     {
         static async void UpdatePromptLoop()
         {

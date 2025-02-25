@@ -49,7 +49,7 @@ namespace PiGSF.Server
         //public static Response Json(JsonNode node, int status=200) => new Response(status, "text/json", node.ToJsonString());
     }
 
-    static class RESTManager
+    public static class RESTManager
     {
         private class PathComparer : IComparer<string>
         {
