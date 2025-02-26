@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
 
 namespace PiGSF.Utils
@@ -10,8 +11,41 @@ namespace PiGSF.Utils
     {
         public static readonly Random RandomShared = new Random(); // Create a single instance
 
-        // Usage: Another thread should be waiting on this queue 
+        //tries to preserve negative spaces e.g. 0..3/4 = 0,  4..7/4 = 1,  but -1...-4 = -1, -5...-8 = -2 and so on
+        // this corrects that. 
+        public static int nfdiv(float a, float b)
+        {
+            return (int)(a > 0 ? a / b : (a - b + 1) / b);
+        }
+        public static float nfmod(float a, float b)
+        {
+            return a - b * (float)Math.Floor(a / b);
+        }
 
+        // AB based ranges
+        public static float RemapRanges(this float v, float oldMin, float oldMax, float newMin, float newMax)
+        {
+            return (((v - oldMin) * (newMax - newMin)) / (oldMax - oldMin)) + newMin;
+        }
+        public static double RemapRanges(this double v, double oldMin, double oldMax, double newMin, double newMax)
+        {
+            return (((v - oldMin) * (newMax - newMin)) / (oldMax - oldMin)) + newMin;
+        }
+        public static decimal RemapRanges(this decimal v, decimal oldMin, decimal oldMax, decimal newMin, decimal newMax)
+        {
+            return (((v - oldMin) * (newMax - newMin)) / (oldMax - oldMin)) + newMin;
+        }
+        public static long RemapRanges(this long v, long oldMin, long oldMax, long newMin, long newMax)
+        {
+            return (((v - oldMin) * (newMax - newMin)) / (oldMax - oldMin)) + newMin;
+        }
+
+        public static float Clamp(this float value, float min, float max) => Math.Clamp(value, min, max);
+        public static double Clamp(this double value, double min, double max) => Math.Clamp(value, min, max);
+        public static int Clamp(this int value, int min, int max) => Math.Clamp(value, min, max);
+
+
+        // Usage: Another thread should be waiting on this queue 
         public static void EnqueueAndNotify<T>(this ConcurrentQueue<T> self, T value, object? mutex = null)
         {
             lock (mutex ?? self)
