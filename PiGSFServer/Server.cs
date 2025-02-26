@@ -85,23 +85,23 @@ namespace PiGSF.Server
             if (s == "h" || s == "?" || s == "help")
             {
                 var helpText = @"
-                        List of commands
-                        help, h, ?  => Displays this
-                        f [text]    => Sets log message filter
+    List of commands
+    help, h, ?  => Displays this
+    f [text]    => Sets log message filter
                         
-                        stop        => Stops the server
-                        keys        => Generates a RSA key pair
+    stop        => Stops the server
+    keys        => Generates a RSA key pair
 
-                        players, p  => Lists all connected players
-                        p [id]      => Searches player by id
-                        ps [user]   => Searches player by username/name/uid
+    players, p  => Lists all connected players
+    p [id]      => Searches player by id
+    ps [user]   => Searches player by username/name/uid
                         
-                        rooms, r    => Displays list of all active rooms
-                        l [id/name] => Opens log for chosen room
-                        r [id]      => Shows info for given room by id/name
-                        rs [name]   => Searches rooms by name (or shows named rooms)
-                        q, b, back  => Exits back to main log
-                        ";
+    rooms, r    => Displays list of all active rooms
+    l [id/name] => Opens log for chosen room
+    r [id]      => Shows info for given room by id/name
+    rs [name]   => Searches rooms by name (or shows named rooms)
+    q, b, back  => Exits back to main log
+    ";
                 ServerLogger.WriteMessageToScreen(helpText);
             }
             else if (s == "")
@@ -137,12 +137,9 @@ namespace PiGSF.Server
             }
             else if (s == "keys")
             {
-
-
                 var buf = new StringBuilder();
                 var keys = RSAEncryption.GenerateRSAKeyPairs(512);
                 ServerLogger.WriteMessageToScreen($"\n{keys.PrivateKey}\n\n{keys.PublicKey}\n\n");
-
             }
             else if (s == "rooms" || s == "r")
             {

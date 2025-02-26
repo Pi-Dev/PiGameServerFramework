@@ -85,7 +85,7 @@ namespace PiGSF.Server
                 buffer.RemoveRange(0, payloadOffset + payloadLength);
 
                 // Stop if this is the final frame
-                if (isFinalFrame) break;
+                //if (isFinalFrame) break; <--
             }
 
             return messages;
