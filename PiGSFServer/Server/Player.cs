@@ -1,6 +1,7 @@
 ﻿using PiGSF.Utils;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Threading;
 
 namespace PiGSF.Server
@@ -76,6 +77,12 @@ namespace PiGSF.Server
         }
 
         public void Send(byte[] data) => _SendData?.Invoke(data);
+
+        // Automation / BOT APIs
+        public void InjectMessageInActiveRoom(byte[] data) 
+            => activeRoom?.messageQueue.EnqueueAndNotify(new Room.PlayerMessage { pl = this, msg = data });
+        public void InjectMessageInConnectedRooms(byte[] data)
+            => rooms.ForEach( r=> r.messageQueue.EnqueueAndNotify(new Room.PlayerMessage { pl = this, msg = data }));
 
         /// Thread-safe
         public void Disconnect(bool disband = false)
