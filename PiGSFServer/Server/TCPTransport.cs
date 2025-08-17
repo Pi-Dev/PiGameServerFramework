@@ -256,7 +256,7 @@ namespace PiGSF.Server
                         disconnectRequested = true;
                         return;
                     }
-                    Task.Run(() => // TLS Handshake then decide HTTPS or GS(S)
+                    Task.Run(() => // TLS Handshake then decide HTTPS/WSS or GSS
                     {
                         socket.Blocking = true;
                         var sslStream = new SslStream(stream, false);
@@ -291,6 +291,14 @@ namespace PiGSF.Server
                             {
                                 //Console.WriteLine("Inner exception: {0}", e.InnerException.Message);
                             }
+                            ServerLogger.Log("Authentication failed - " + e.ToString());
+                            sslStream.Close();
+                            client.Close();
+                            disconnectRequested = true;
+                            return;
+                        }
+                        catch(IOException e)
+                        {
                             ServerLogger.Log("Authentication failed - " + e.ToString());
                             sslStream.Close();
                             client.Close();
