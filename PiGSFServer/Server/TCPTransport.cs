@@ -321,10 +321,20 @@ namespace PiGSF.Server
             listener.Start(5000);
             while (!Server.ServerStopRequested)
             {
-                var client = listener.AcceptTcpClient();
-                client.NoDelay = true;
-                //ServerLogger.Log($"CONN. T={sw.ElapsedMilliseconds}");
-                AddClient(client);
+                try
+                {
+                    var client = listener.AcceptTcpClient();
+                    client.NoDelay = true;
+                    //ServerLogger.Log($"CONN. T={sw.ElapsedMilliseconds}");
+                    AddClient(client);
+                }
+                catch (SocketException se) when (
+                    se.SocketErrorCode == SocketError.Interrupted ||
+                    se.SocketErrorCode == SocketError.OperationAborted)
+                {
+                    ServerLogger.Log("Server Stop Requested. Waiting for rooms.");
+                    return; 
+                }
             }
         }
         // Finds a suitable thread worker and registers the client with it
@@ -502,7 +512,7 @@ namespace PiGSF.Server
                         foreach (var wc in readableClients)
                         {
                             if (!wc.client.Connected) { wc.disconnectRequested = true; }
-                            
+
                             // disconnect telnet clients / stale connections with no protocol
                             if (ts > wc.lastRecvTime + 30 && (wc.player == null || wc.protocol == null))
                                 wc.disconnectRequested = true;

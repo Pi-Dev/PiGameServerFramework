@@ -79,7 +79,7 @@ namespace PiGSF.Server
             var p = r.GetPlayersData();
             return $" #{r.Id,-5} | {r.Name,-10} | ({p.connected}/{p.total}) | {r.GetType().Name}";
         }
-        internal static void HandleCommand(string command)
+        public static void HandleCommand(string command)
         {
             string s = command.ToLower();
             if (s == "h" || s == "?" || s == "help")
