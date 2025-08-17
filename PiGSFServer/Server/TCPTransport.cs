@@ -256,7 +256,7 @@ namespace PiGSF.Server
                         disconnectRequested = true;
                         return;
                     }
-                    Task.Run(() => // TLS Handshake
+                    Task.Run(() => // TLS Handshake then decide HTTPS or GS(S)
                     {
                         socket.Blocking = true;
                         var sslStream = new SslStream(stream, false);
@@ -264,9 +264,25 @@ namespace PiGSF.Server
                         {
                             sslStream.AuthenticateAsServer(Server.serverCertificate);
                             this.stream = sslStream;
+
                             var buffer = new byte[4196];
-                            int bytesRead = sslStream.Read(buffer, 0, buffer.Length);
-                            HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, bytesRead), true);
+                            int got = 0;
+                            while (got < 2)
+                            {
+                                int r = sslStream.Read(buffer, got, 2 - got);
+                                if (r <= 0) throw new IOException("closed during TLS preface");
+                                got += r;
+                            }
+                            if (buffer[0] == 'G' && buffer[1] == 'S') // TLSGS
+                            {
+                                protocol = new GameServerProtocol();     // "GS" eaten
+                                IsProtocolInitializing = false;
+                                socket.Blocking = false;
+                                return;
+                            }
+                            // 2) Not GS => need full HTTP bytes including the first two already read
+                            int n = sslStream.Read(buffer, 2, buffer.Length - 2);
+                            HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, 2 + n), true);
                             socket.Blocking = false;
                         }
                         catch (AuthenticationException e)
@@ -333,7 +349,7 @@ namespace PiGSF.Server
                     se.SocketErrorCode == SocketError.OperationAborted)
                 {
                     ServerLogger.Log("Server Stop Requested. Waiting for rooms.");
-                    return; 
+                    return;
                 }
             }
         }

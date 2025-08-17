@@ -179,7 +179,7 @@ public static class ServerLogger
         lock (Console.Out)
         {
 			Console.ForegroundColor = ConsoleColor.Gray;
-            Console.WriteLine("\r"+message.TrimEnd());
+            Console.WriteLine("\r"+message.TrimEnd()+"                     ");
             WritePrompt();
         }
     }
