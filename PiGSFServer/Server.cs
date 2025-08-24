@@ -346,15 +346,16 @@ namespace PiGSF.Server
 
             // SSL Files - PFX:
             string fnCert = ServerConfig.Get("SSLServerCertPfx"); 
+            string fnCertPass = ServerConfig.Get("SSLServerCertPfxPassword"); 
 			if(fnCert != "")
 			{
 				if(fnCert.StartsWith("~")) fnCert = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + fnCert.Substring(1);
-				serverCertificate = new X509Certificate2(fnCert, "yourpassword");
+				serverCertificate = new X509Certificate2(fnCert, fnCertPass);
 			}
 			
 			// PEM 
 			string certPath = ServerConfig.Get("SSLServerCertPem"); 
-			string keyPath = ServerConfig.Get("SSLServerKeyPem");
+			string keyPath = ServerConfig.Get("SSLServerKeyPemPassword");
 			if (certPath.StartsWith("~")) certPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + certPath.Substring(1);
 			if (keyPath.StartsWith("~")) keyPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + keyPath.Substring(1);
 			if (certPath != "" && keyPath != "")

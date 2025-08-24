@@ -81,7 +81,7 @@ namespace PiGSF.Server
                             {
                                 player = p; // Authenticated
                                 player._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { message = data, state = this });
-                                player._CloseConnection = () => { socket.Disconnect(false); disconnectRequested = true; };
+                                player._CloseConnection = () => { try { socket.Disconnect(false); } catch (SocketException) { }; disconnectRequested = true; };
                                 IsAuthenticating = false;
                             }
                         }
