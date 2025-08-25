@@ -81,7 +81,7 @@ namespace PiGSF.Server
                             {
                                 player = p; // Authenticated
                                 player._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { message = data, state = this });
-                                player._CloseConnection = () => { socket.Disconnect(false); disconnectRequested = true; };
+                                player._CloseConnection = () => { try { socket.Disconnect(false); } catch (SocketException) { }; disconnectRequested = true; };
                                 IsAuthenticating = false;
                             }
                         }
@@ -256,7 +256,7 @@ namespace PiGSF.Server
                         disconnectRequested = true;
                         return;
                     }
-                    Task.Run(() => // TLS Handshake
+                    Task.Run(() => // TLS Handshake then decide HTTPS/WSS or GSS
                     {
                         socket.Blocking = true;
                         var sslStream = new SslStream(stream, false);
@@ -264,9 +264,25 @@ namespace PiGSF.Server
                         {
                             sslStream.AuthenticateAsServer(Server.serverCertificate);
                             this.stream = sslStream;
+
                             var buffer = new byte[4196];
-                            int bytesRead = sslStream.Read(buffer, 0, buffer.Length);
-                            HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, bytesRead), true);
+                            int got = 0;
+                            while (got < 2)
+                            {
+                                int r = sslStream.Read(buffer, got, 2 - got);
+                                if (r <= 0) throw new IOException("closed during TLS preface");
+                                got += r;
+                            }
+                            if (buffer[0] == 'G' && buffer[1] == 'S') // TLSGS
+                            {
+                                protocol = new GameServerProtocol();     // "GS" eaten
+                                IsProtocolInitializing = false;
+                                socket.Blocking = false;
+                                return;
+                            }
+                            // 2) Not GS => need full HTTP bytes including the first two already read
+                            int n = sslStream.Read(buffer, 2, buffer.Length - 2);
+                            HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, 2 + n), true);
                             socket.Blocking = false;
                         }
                         catch (AuthenticationException e)
@@ -275,6 +291,14 @@ namespace PiGSF.Server
                             {
                                 //Console.WriteLine("Inner exception: {0}", e.InnerException.Message);
                             }
+                            ServerLogger.Log("Authentication failed - " + e.ToString());
+                            sslStream.Close();
+                            client.Close();
+                            disconnectRequested = true;
+                            return;
+                        }
+                        catch(IOException e)
+                        {
                             ServerLogger.Log("Authentication failed - " + e.ToString());
                             sslStream.Close();
                             client.Close();
@@ -321,10 +345,20 @@ namespace PiGSF.Server
             listener.Start(5000);
             while (!Server.ServerStopRequested)
             {
-                var client = listener.AcceptTcpClient();
-                client.NoDelay = true;
-                //ServerLogger.Log($"CONN. T={sw.ElapsedMilliseconds}");
-                AddClient(client);
+                try
+                {
+                    var client = listener.AcceptTcpClient();
+                    client.NoDelay = true;
+                    //ServerLogger.Log($"CONN. T={sw.ElapsedMilliseconds}");
+                    AddClient(client);
+                }
+                catch (SocketException se) when (
+                    se.SocketErrorCode == SocketError.Interrupted ||
+                    se.SocketErrorCode == SocketError.OperationAborted)
+                {
+                    ServerLogger.Log("Server Stop Requested. Waiting for rooms.");
+                    return;
+                }
             }
         }
         // Finds a suitable thread worker and registers the client with it
@@ -502,7 +536,7 @@ namespace PiGSF.Server
                         foreach (var wc in readableClients)
                         {
                             if (!wc.client.Connected) { wc.disconnectRequested = true; }
-                            
+
                             // disconnect telnet clients / stale connections with no protocol
                             if (ts > wc.lastRecvTime + 30 && (wc.player == null || wc.protocol == null))
                                 wc.disconnectRequested = true;

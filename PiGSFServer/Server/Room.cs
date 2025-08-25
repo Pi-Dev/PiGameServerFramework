@@ -97,6 +97,9 @@ namespace PiGSF.Server
 
             ServerLogger.Log("Thread for room " + GetType().Name + " started");
 
+            // 0. Initialize the room
+            Setup();
+
             // 1. Determine when first Update must be called
             var stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -173,6 +176,11 @@ namespace PiGSF.Server
 
         // Lifecycle methods, called from the Room Thread, in the Room Thread
         // Must be reimplemented by the room gamelogic for server-authoritative games
+        
+        protected virtual void Setup()
+        {
+            Debug.Assert(Thread.CurrentThread.ManagedThreadId == roomThreadId);
+        }
 
         protected virtual void Start()
         {
@@ -209,6 +217,7 @@ namespace PiGSF.Server
             Debug.Assert(Thread.CurrentThread.ManagedThreadId == roomThreadId);
         }
 
+
         // Default Room Management
         static List<Type> InitRoomTypes()
         {
@@ -216,7 +225,8 @@ namespace PiGSF.Server
             var ts = TypeLoader.GetSubclassesOf<Room>();
             foreach (var r in ts)
             {
-                ServerLogger.Log($"|- {r.Name} [{r.FullName}]");
+                // this line IS important as it will call the static ctors
+                ServerLogger.Log($"|- {r.Name} [{r.FullName}]"); 
             }
             ServerLogger.Log("|");
             return ts;

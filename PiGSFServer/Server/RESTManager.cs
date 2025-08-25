@@ -20,6 +20,11 @@ namespace PiGSF.Server
             Path = path;
             Body = body;
         }
+
+        public string? GetHeader(string key)
+        {
+            return Headers!.GetValueOrDefault(key, null);
+        }
     }
 
     public class Response
@@ -141,7 +146,7 @@ namespace PiGSF.Server
                         return Routes[path][request.Method](request);
 
                 // If no match found, return 404
-                return new Response(404, "text/plain", "Not Found");
+                return new Response(404, "text/plain", "");
             }
             finally
             {
