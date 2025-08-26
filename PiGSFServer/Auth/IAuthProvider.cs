@@ -12,6 +12,7 @@ namespace Auth
         public string name { get; set; } = "Guest";
         public string username { get; set; } = "guest";
         public string uid { get; set; } = "anon:guest";
+        public string avatar { get; set; } = "";
     }
 
     public interface IAuthProvider

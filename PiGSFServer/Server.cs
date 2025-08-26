@@ -437,6 +437,7 @@ namespace PiGSF.Server
                 player.uid = pd.uid;
                 player.username = pd.username;
                 player.name = pd.name;
+                player.playerData = pd;
                 knownPlayers.Add(player);
                 knownPlayersByUid[pd.uid] = player;
                 player.JoinRoom(Room.defaultRoom);

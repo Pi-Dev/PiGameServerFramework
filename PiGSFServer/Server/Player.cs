@@ -1,4 +1,5 @@
-﻿using PiGSF.Utils;
+﻿using Auth;
+using PiGSF.Utils;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -10,6 +11,7 @@ namespace PiGSF.Server
     {
         public readonly int id; // Unique player ID (server-global)
         public string uid = "anon:guest";
+        public PlayerData playerData;
 
         public bool isSpectator;
         public bool isBot;
