@@ -103,5 +103,15 @@ namespace PiGSF.Server
             }
             _rooms = null;
         }
-    }
+
+        /// Misc / Debug
+        public string ToTableString()
+        {
+            return
+                /* Id  */ id.ToString().PadRight(5) + "| " +
+                /* username */ username.PadRight(16) + " | " +
+                // /* name */ name.PadRight(32) + " | " +
+                /* uid */ uid.PadRight(48) + " |";
+        }
+}
 }

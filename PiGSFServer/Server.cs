@@ -230,7 +230,7 @@ namespace PiGSF.Server
                         var p = GetPlayerById(tokens[1]);
                         r.BanPlayer(p);
                     }
-                    r.messageQueue.Enqueue(new Room.ServerCommand { command = command });
+                    r.messageQueue.EnqueueAndNotify(new Room.ServerCommand { command = command });
                 }
                 else HandleCommand("?");
             }

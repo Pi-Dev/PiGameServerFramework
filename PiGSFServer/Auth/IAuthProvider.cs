@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Auth
 {
     [Serializable]
-    public class PlayerData
+    public partial class PlayerData
     {
         public string name { get; set; } = "Guest";
         public string username { get; set; } = "guest";

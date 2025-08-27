@@ -108,5 +108,28 @@ namespace PiGSF.Utils
         {
             return collection.GetRandomElementByWeight(x => x.weight).item;
         }
+
+        // Common safety things
+        public static T GetOrDefault<T>(this System.Array arr, int index, T def)
+        {
+            if (index < 0) return def;
+            if (index >= arr.Length) return def;
+            return (T)arr.GetValue(index);
+        }
+
+        public static T GetOrDefault<T>(this List<T> arr, int index, T def)
+        {
+            if (index < 0) return def;
+            if (index >= arr.Count) return def;
+            return (T)arr.ToArray().GetValue(index);
+        }
+
+        public static V GetOrDefault<K, V>(this Dictionary<K, V> dict, K key, V def)
+        {
+            if (dict == null) return def;
+            V val;
+            if (dict.TryGetValue(key, out val)) return val;
+            return def;
+        }
     }
 }
