@@ -44,7 +44,7 @@ namespace PiGSF.Server
             }
             public override string ToString()
             {
-                return $"#{id},{(IsAuthenticated?"A":(IsAuthenticating?"a":""))},p={(player!=null?player.name:"null")}";
+                return $"#{id},{(IsAuthenticated ? "A" : (IsAuthenticating ? "a" : ""))},p={(player != null ? player.name : "null")}";
             }
             internal int id;
             internal TcpClient client;
@@ -82,15 +82,15 @@ namespace PiGSF.Server
                         if (p == null) { socket.Close(); disconnectRequested = true; /* so it gets removed from the Worker */ }
                         else
                         {
-                            var oldState = Interlocked.Exchange(ref p.tcpTransportState, this);                            
+                            var oldState = Interlocked.Exchange(ref p.tcpTransportState, this);
                             if (oldState != null)
                             {
                                 oldState.disconnectRequested = true;
                                 oldState.player = null;
+                                p._SendData = null;
+                                p._CloseConnection = null;
+                                p.Disconnect(disband: false); // force cleanup
                             }
-                            p._SendData = null;
-                            p._CloseConnection = null;
-                            p.Disconnect(disband: false); // force cleanup
                             p._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { message = data, state = this });
                             p._CloseConnection = () => { try { socket.Disconnect(false); } catch (SocketException) { }; disconnectRequested = true; };
                             IsAuthenticating = false;
@@ -103,7 +103,7 @@ namespace PiGSF.Server
                         if (p.activeRoom == null && rms.Count == 0)
                             p.JoinRoom(Room.defaultRoom);
                         else
-                            foreach (var r in rms) 
+                            foreach (var r in rms)
                                 r.AddPlayer(p);
                     });
                 }
@@ -303,7 +303,7 @@ namespace PiGSF.Server
                             // 2) Not GS => need full HTTP bytes including the first two already read
                             int n = sslStream.Read(buffer, 2, buffer.Length - 2);
                             HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, 2 + n), true);
-                            if(!disconnectRequested) socket.Blocking = false;
+                            if (!disconnectRequested) socket.Blocking = false;
                         }
                         catch (AuthenticationException e)
                         {
