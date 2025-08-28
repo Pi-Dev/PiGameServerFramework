@@ -21,10 +21,12 @@ namespace PiGSF.Server
         TcpListener listener;
         List<TCPSocketWorker> workers = new();
         bool enableInsecureHTTP;
-        class ClientState
+        internal class ClientState
         {
+            static int NextStateId = 0;
             internal ClientState(TcpClient c, TCPSocketWorker w)
             {
+                id = NextStateId++;
                 client = c;
                 worker = w;
                 stream = c.GetStream();
@@ -40,6 +42,11 @@ namespace PiGSF.Server
                 ReadMessageState = 0;
                 lastRecvTime = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds();
             }
+            public override string ToString()
+            {
+                return $"#{id},{(IsAuthenticated?"A":(IsAuthenticating?"a":""))},p={(player!=null?player.name:"null")}";
+            }
+            internal int id;
             internal TcpClient client;
             internal Socket socket;
             internal System.IO.Stream stream;
@@ -51,7 +58,7 @@ namespace PiGSF.Server
             internal byte[]? CurrentMessage;
             internal bool IsAuthenticated => player != null;
             internal volatile bool IsAuthenticating = false;
-            internal volatile bool disconnectRequested = false;
+            internal bool disconnectRequested { get; set; }
             internal volatile bool disconnectRecvHandled = false;
             internal volatile bool disconnectSendHandled = false;
             internal volatile bool IsProtocolInitializing = false;
@@ -75,16 +82,29 @@ namespace PiGSF.Server
                         if (p == null) { socket.Close(); disconnectRequested = true; /* so it gets removed from the Worker */ }
                         else
                         {
-                            // Disconnect player if it has disconnect request, otherwise this player will join as connected phantom
-                            if (disconnectRequested) p.Disconnect();
-                            else
+                            var oldState = Interlocked.Exchange(ref p.tcpTransportState, this);                            
+                            if (oldState != null)
                             {
-                                player = p; // Authenticated
-                                player._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { message = data, state = this });
-                                player._CloseConnection = () => { try { socket.Disconnect(false); } catch (SocketException) { }; disconnectRequested = true; };
-                                IsAuthenticating = false;
+                                oldState.disconnectRequested = true;
+                                oldState.player = null;
                             }
+                            p._SendData = null;
+                            p._CloseConnection = null;
+                            p.Disconnect(disband: false); // force cleanup
+                            p._SendData = (data) => worker.SendMessageQueue.EnqueueAndNotify(new SendPacket { message = data, state = this });
+                            p._CloseConnection = () => { try { socket.Disconnect(false); } catch (SocketException) { }; disconnectRequested = true; };
+                            IsAuthenticating = false;
+                            p.isConnected = 1;
+                            player = p; // Authenticated
                         }
+
+                        // Assign player to a room, OR notify referenced rooms that player is connected
+                        var rms = p.rooms;
+                        if (p.activeRoom == null && rms.Count == 0)
+                            p.JoinRoom(Room.defaultRoom);
+                        else
+                            foreach (var r in rms) 
+                                r.AddPlayer(p);
                     });
                 }
                 else if (!IsAuthenticated && IsAuthenticating)
@@ -283,7 +303,7 @@ namespace PiGSF.Server
                             // 2) Not GS => need full HTTP bytes including the first two already read
                             int n = sslStream.Read(buffer, 2, buffer.Length - 2);
                             HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, 2 + n), true);
-                            socket.Blocking = false;
+                            if(!disconnectRequested) socket.Blocking = false;
                         }
                         catch (AuthenticationException e)
                         {
@@ -297,7 +317,7 @@ namespace PiGSF.Server
                             disconnectRequested = true;
                             return;
                         }
-                        catch(IOException e)
+                        catch (IOException e)
                         {
                             ServerLogger.Log("Authentication failed - " + e.ToString());
                             sslStream.Close();
@@ -395,7 +415,7 @@ namespace PiGSF.Server
         }
 
         // class with send request for a sender worker
-        class SendPacket
+        internal class SendPacket
         {
             internal ClientState state;
             internal byte[] message;
@@ -404,7 +424,7 @@ namespace PiGSF.Server
         // TCP Worker processes the messages
         // Sender workers do not select on a socket, they process all requests
         // Receiver workers do select on their client list where to receive from
-        class TCPSocketWorker
+        public class TCPSocketWorker
         {
             List<ClientState> clients = new();
             internal volatile bool active = false; // flag if the thread isnt waiting on a Select
@@ -538,12 +558,7 @@ namespace PiGSF.Server
                             if (!wc.client.Connected) { wc.disconnectRequested = true; }
 
                             // disconnect telnet clients / stale connections with no protocol
-                            if (ts > wc.lastRecvTime + 30 && (wc.player == null || wc.protocol == null))
-                                wc.disconnectRequested = true;
-                            if (wc.player != null && wc.player.activeRoom != null
-                                && wc.player.activeRoom.ConnectionTimeout > 0 && ts > wc.lastRecvTime + wc.player.activeRoom.ConnectionTimeout)
-                                wc.disconnectRequested = true;
-                            if (ts > wc.lastRecvTime + 60 * 5) wc.disconnectRequested = true;  // 5 minutes global timeout
+
 
                             if (wc.disconnectRequested)
                             {

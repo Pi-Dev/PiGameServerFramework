@@ -12,8 +12,8 @@ namespace PiGSF.Client
     {
         //public static string serverAddress = "eun1.pi-dev.com";
         public static string serverAddress = "127.0.0.1";
-        public static int serverPort = 27015;
-        public static int numberOfTests = 3;
+        public static int serverPort = 8443;
+        public static int numberOfTests = 5000;
 
         // Server config
         public static int HeaderSize = 2;

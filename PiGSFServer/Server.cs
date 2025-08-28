@@ -326,11 +326,12 @@ namespace PiGSF.Server
 
             List<Type> transports = InitTransports();
             Server.transports = new();
-            foreach (var t in transports)
-            {
-                var transport = Activator.CreateInstance(t) as ITransport;
-                if (transport != null) Server.transports.Add(transport);
-            }
+            // foreach (var t in transports)
+            // {
+            //     var transport = Activator.CreateInstance(t) as ITransport;
+            //     if (transport != null) Server.transports.Add(transport);
+            // }
+            Server.transports.Add(new TcpTransport());
 
             InitAuthenticators();
 
@@ -440,7 +441,6 @@ namespace PiGSF.Server
                 player.playerData = pd;
                 knownPlayers.Add(player);
                 knownPlayersByUid[pd.uid] = player;
-                player.JoinRoom(Room.defaultRoom);
             }
             return player;
         }

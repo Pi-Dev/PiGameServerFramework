@@ -110,7 +110,7 @@ namespace PiGSF.Client
             }
 
             // filter
-            //if (ntests > 1)
+            if (ntests > 1)
             {
                 while (true)
                 {
@@ -130,13 +130,13 @@ namespace PiGSF.Client
 
         static void TCPTestThread(string username, ConsoleColor color)
         {
-            string playerData = username;
-            //Log.Write($"[{username}] Connecting to {ClientConfig.serverAddress}:{ClientConfig.serverPort}...", color);
+            string playerData = $"anon:DDoS-Shard1-User{username}&User{username}&0p0";
+            Log.Write($"[{username}] Connecting to {ClientConfig.serverAddress}:{ClientConfig.serverPort}...", color);
             var client = new Client();
             try
             {
                 client.Connect(ClientConfig.serverAddress, ClientConfig.serverPort);
-                //Log.Write($"[{username}] Connected", color);
+                Log.Write($"[{username}] Connected", color);
             }
             catch (Exception ex)
             {
@@ -150,8 +150,6 @@ namespace PiGSF.Client
             }
 
             client.SendString(playerData);
-
-
 
             string[] messages = {
                 "Bot liked a message: Can we fix this?",
@@ -262,6 +260,17 @@ namespace PiGSF.Client
             //Thread.Sleep(new TimeSpan(0, 3, 0));
             client.SendString($"Hello fellows! [nt={nt}]");
 
+            if(ClientConfig.numberOfTests == 1)
+            {
+                Task.Run(() => {
+                    while (true)
+                    {
+                        string? input = Console.ReadLine();
+                        client.SendString(input);
+                    }
+                });
+            }
+
             while (true)
             {
                 lock (client.messages) {
@@ -286,11 +295,11 @@ namespace PiGSF.Client
             //}
 
             //Start main client loop
-            //while (true)
-            //{
-            //    string? input = Console.ReadLine();
-            //    client.SendString(input);
-            //}
+            while (true)
+            {
+                string? input = Console.ReadLine();
+                client.SendString(input);
+            }
         }
     }
 }

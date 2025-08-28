@@ -119,7 +119,7 @@ public static class ServerConfig
     public static int DefaultRoomConnectionTimeout = 300;
 
     // Authentication modules by default
-    public static IAuthProvider[] authProviders = new IAuthProvider[] { /*new JWTAuth(),*/ new NoAuth() };
+    public static IAuthProvider[] authProviders = { /*new JWTAuth(),*/ new NoAuth() };
 
     public static string EncryptionPublicKey => LoadFileOrDefault("PIGSF-PUBLIC-RSA.PEM");
     public static string EncryptionPrivateKey => LoadFileOrDefault("PIGSF-PRIVATE-RSA.PEM");

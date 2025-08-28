@@ -21,8 +21,9 @@ namespace PiGSF.Server
 
         public object UserData { get; set; } // Game-specific user data
 
-        // Caeful with changing this
+        // Careful with changing this
         public Room activeRoom;
+        internal TcpTransport.ClientState tcpTransportState;
 
         List<Room>? _rooms = null;
         public List<Room> rooms
