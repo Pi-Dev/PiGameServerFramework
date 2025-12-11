@@ -98,6 +98,13 @@ namespace PiGSF.Utils
             return default;
         }
 
+        // ForEach basically
+        public static void Each<T>(this IEnumerable<T> source, Action<T> action)
+        {
+            foreach (T item in source)
+                action(item);
+        }
+
         // Weighted Random
         public class Weighted<T>
         {

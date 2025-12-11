@@ -238,10 +238,20 @@ namespace PiGSF.Server
                 {
                     httpRespBytes = Encoding.UTF8.GetBytes(httpResponse + response.Body);
                 }
-                stream.Write(httpRespBytes, 0, httpRespBytes.Length);
-                stream.Flush();
-                client.Close();
-                disconnectRequested = true;
+                try
+                {
+                    stream.Write(httpRespBytes, 0, httpRespBytes.Length);
+                    stream.Flush();
+                }
+                catch (Exception ex)
+                {
+                    ServerLogger.Log("HTTP response send failed: " + ex.Message);
+                }
+                finally
+                {
+                    client.Close();
+                    disconnectRequested = true;
+                }
             }
 
             string GetStatusMessage(int statusCode)
@@ -261,11 +271,20 @@ namespace PiGSF.Server
                 IsProtocolInitializing = true;
                 if (buffer[0] == 'G' && buffer[1] == 'S')
                 {
-                    var buf = new byte[2];
-                    var hs = stream.Read(buf, 0, 2);
-                    protocol = new GameServerProtocol();
+                    try
+                    {
+                        var buf = new byte[2];
+                        var hs = stream.Read(buf, 0, 2);
+                        protocol = new GameServerProtocol();
+                    }
+                    catch (Exception ex)
+                    {
+                        client.Close();
+                        disconnectRequested = true;
+                        ServerLogger.Log("InitProtocol GS failed: " + ex.Message);
+                        return;
+                    }
                     IsProtocolInitializing = false;
-                    //socket.Blocking = false;
                     return;
                 }
                 if (buffer[0] == 0x16)
@@ -301,7 +320,19 @@ namespace PiGSF.Server
                                 return;
                             }
                             // 2) Not GS => need full HTTP bytes including the first two already read
-                            int n = sslStream.Read(buffer, 2, buffer.Length - 2);
+                            int n = 0;
+                            try
+                            {
+                                n = sslStream.Read(buffer, 2, buffer.Length - 2);
+                            }
+                            catch (Exception ex)
+                            {
+                                ServerLogger.Log("TLS HTTP pre-read failed: " + ex.Message);
+                                sslStream.Close();
+                                client.Close();
+                                disconnectRequested = true;
+                                return;
+                            }
                             HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, 2 + n), true);
                             if (!disconnectRequested) socket.Blocking = false;
                         }
@@ -331,9 +362,18 @@ namespace PiGSF.Server
                 {
                     Task.Run(() =>
                     {
-                        var buffer = new byte[4196];
-                        int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                        HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, bytesRead), false);
+                        try
+                        {
+                            var buffer = new byte[4196];
+                            int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                            HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, bytesRead), false);
+                        }
+                        catch (Exception ex)
+                        {
+                            ServerLogger.Log("InitProtocol HTTP failed: " + ex.Message);
+                            client.Close();
+                            disconnectRequested = true;
+                        }
                     });
                 }
                 else
@@ -497,18 +537,57 @@ namespace PiGSF.Server
                     {
                         Socket.Select(null, socketsToWrite, null, 5000);
 
+                        //while (SendMessageQueue.TryDequeue(out var sd))
+                        //{
+                        //    if (socketsToWrite.Contains(sd.state.socket))
+                        //    {
+                        //        if (sd.state.socket.Connected) // else it's disconnected, drop the message
+                        //        {
+                        //            var framed = sd.state.protocol.CreateMessage(sd.message);
+                        //            sd.state.stream.Write(framed, 0, framed.Length);
+                        //        }
+                        //    }
+                        //    else requeueBuffer.Add(sd);
+                        //}
+
+                        // drain queue -> batch per socket -> single write per socket
+                        var batches = new Dictionary<Socket, (ClientState st, MemoryStream buf)>(16);
+
                         while (SendMessageQueue.TryDequeue(out var sd))
                         {
-                            if (socketsToWrite.Contains(sd.state.socket))
+                            var sock = sd.state.socket;
+                            if (!socketsToWrite.Contains(sock)) { requeueBuffer.Add(sd); continue; }
+                            if (!sock.Connected) continue;
+
+                            if (!batches.TryGetValue(sock, out var entry))
                             {
-                                if (sd.state.socket.Connected) // else it's disconnected, drop the message
+                                entry = (sd.state, new MemoryStream(4096));
+                                batches.Add(sock, entry);
+                            }
+
+                            var framed = sd.state.protocol.CreateMessage(sd.message);
+                            entry.buf.Write(framed, 0, framed.Length);
+                        }
+
+                        // flush per-socket
+                        foreach (var kv in batches)
+                        {
+                            var st = kv.Value.st;
+                            var ms = kv.Value.buf;
+                            try
+                            {
+                                if (st.socket.Connected && ms.Length > 0)
                                 {
-                                    var framed = sd.state.protocol.CreateMessage(sd.message);
-                                    sd.state.stream.Write(framed, 0, framed.Length);
+                                    if (ms.TryGetBuffer(out ArraySegment<byte> seg))
+                                        st.stream.Write(seg.Array, seg.Offset, seg.Count);
+                                    else
+                                        st.stream.Write(ms.ToArray(), 0, (int)ms.Length);
                                 }
                             }
-                            else requeueBuffer.Add(sd);
+                            finally { ms.Dispose(); }
                         }
+
+
                     }
                     catch (Exception) { } // The receiver will handle disconnection
 
@@ -558,8 +637,6 @@ namespace PiGSF.Server
                             if (!wc.client.Connected) { wc.disconnectRequested = true; }
 
                             // disconnect telnet clients / stale connections with no protocol
-
-
                             if (wc.disconnectRequested)
                             {
                                 //ServerLogger.Log($"TCP Receiver handled disc for {wc.player?.name}");
@@ -604,8 +681,17 @@ namespace PiGSF.Server
                                     // If protocol is unknown, determine the protocol - peek at the socket
                                     if (state.protocol == null && !state.IsProtocolInitializing)
                                     {
-                                        int bytesRead = s.Receive(buffer, sz, SocketFlags.Peek);
-                                        if (bytesRead > 4) state.InitProtocol(buffer.AsSpan(0, bytesRead));
+                                        try
+                                        {
+                                            int bytesRead = s.Receive(buffer, sz, SocketFlags.Peek);
+                                            if (bytesRead > 4)
+                                                state.InitProtocol(buffer.AsSpan(0, bytesRead));
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            state.disconnectRequested = true;
+                                            ServerLogger.Log("Protocol peek failed: " + ex.Message);
+                                        }
                                     }
                                     else if (state.protocol != null)
                                     {
