@@ -354,7 +354,7 @@ namespace PiGSF.Server
 			
 			// PEM 
 			string certPath = ServerConfig.Get("SSLServerCertPem"); 
-			string keyPath = ServerConfig.Get("SSLServerKeyPemPassword");
+			string keyPath = ServerConfig.Get("SSLServerKeyPem");
 			if (certPath.StartsWith("~")) certPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + certPath.Substring(1);
 			if (keyPath.StartsWith("~")) keyPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + keyPath.Substring(1);
 			if (certPath != "" && keyPath != "")
