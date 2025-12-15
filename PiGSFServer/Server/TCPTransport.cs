@@ -96,15 +96,16 @@ namespace PiGSF.Server
                             IsAuthenticating = false;
                             p.isConnected = 1;
                             player = p; // Authenticated
-                        }
 
-                        // Assign player to a room, OR notify referenced rooms that player is connected
-                        var rms = p.rooms;
-                        if (p.activeRoom == null && rms.Count == 0)
-                            p.JoinRoom(Room.defaultRoom);
-                        else
-                            foreach (var r in rms)
-                                r.AddPlayer(p);
+                            // Assign player to a room, OR notify referenced rooms that player is connected
+                            var rms = p.rooms;
+                            if (p.activeRoom == null && rms.Count == 0)
+                                p.JoinRoom(Room.defaultRoom);
+                            else
+                                foreach (var r in rms)
+                                    r.AddPlayer(p);
+                        }
+                        // Player may be null here
                     });
                 }
                 else if (!IsAuthenticated && IsAuthenticating)
@@ -555,6 +556,9 @@ namespace PiGSF.Server
 
                         while (SendMessageQueue.TryDequeue(out var sd))
                         {
+                            var idArray = sd.message.Take(2).ToArray();
+                            ServerLogger.Log($"MSG={Encoding.UTF8.GetString(idArray)} [{string.Join(" ", idArray.Select(b => b.ToString("X2")))}]");
+
                             var sock = sd.state.socket;
                             if (!socketsToWrite.Contains(sock)) { requeueBuffer.Add(sd); continue; }
                             if (!sock.Connected) continue;

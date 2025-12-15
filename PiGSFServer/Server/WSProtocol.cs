@@ -1,17 +1,16 @@
 ﻿using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace PiGSF.Server
 {
-
     internal class WebSocketProtocol : IProtocol
     {
         internal bool compressed = false;
         private const int HeaderSize = 2;
-        private List<byte> buffer = new();
+        private readonly List<byte> buffer = new();
 
         public List<byte[]> AddData(Span<byte> bytes)
         {
@@ -24,26 +23,29 @@ namespace PiGSF.Server
                 byte finAndOpcode = buffer[0];
                 byte maskAndLength = buffer[1];
 
-                bool isFinalFrame = (finAndOpcode & 0b10000000) != 0;
-                int opcode = finAndOpcode & 0b00001111;
-                bool isMasked = (maskAndLength & 0b10000000) != 0;
-                int payloadLength = maskAndLength & 0b01111111;
+                int opcode = finAndOpcode & 0b0000_1111;
+                bool isMasked = (maskAndLength & 0b1000_0000) != 0;
+                ulong payloadLenU = (ulong)(maskAndLength & 0b0111_1111);
 
-                // Handle extended payload lengths
-                if (payloadLength == 126)
+                if (payloadLenU == 126)
                 {
                     if (buffer.Count < payloadOffset + 2) break;
-                    payloadLength = (buffer[payloadOffset] << 8) | buffer[payloadOffset + 1];
+                    payloadLenU = (ulong)((buffer[payloadOffset] << 8) | buffer[payloadOffset + 1]);
                     payloadOffset += 2;
                 }
-                else if (payloadLength == 127)
+                else if (payloadLenU == 127)
                 {
                     if (buffer.Count < payloadOffset + 8) break;
-                    payloadLength = (int)BitConverter.ToUInt64(buffer.GetRange(payloadOffset, 8).ToArray(), 0);
+
+                    Span<byte> lenBytes = stackalloc byte[8];
+                    for (int i = 0; i < 8; i++) lenBytes[i] = buffer[payloadOffset + i];
+                    payloadLenU = BinaryPrimitives.ReadUInt64BigEndian(lenBytes);
                     payloadOffset += 8;
                 }
 
-                // Handle masking key
+                if (payloadLenU > int.MaxValue) throw new InvalidOperationException("Frame payload too large.");
+                int payloadLength = (int)payloadLenU;
+
                 byte[] maskingKey = Array.Empty<byte>();
                 if (isMasked)
                 {
@@ -52,40 +54,23 @@ namespace PiGSF.Server
                     payloadOffset += 4;
                 }
 
-                // Check for full payload
                 if (buffer.Count < payloadOffset + payloadLength) break;
 
-                // Extract and unmask payload
                 var payload = buffer.Skip(payloadOffset).Take(payloadLength).ToArray();
                 if (isMasked)
-                {
                     for (int i = 0; i < payload.Length; i++)
-                    {
-                        payload[i] ^= maskingKey[i % 4];
-                    }
-                }
+                        payload[i] ^= maskingKey[i & 3];
 
-                if (opcode == 0x01) // Text frame, reconvert to normalize
+                if (opcode == 0x01) payload = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(payload));
+                else if (opcode == 0x08) { messages.Add(null); return messages; }
+                else if (opcode == 0x09 || opcode == 0x0A)
                 {
-                    payload = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(payload));
-                }
-                else if (opcode == 0x08) // Close frame
-                {
-                    messages.Add(null);
-                    return messages; // trigger a disconnect
-                }
-                else if (opcode == 0x09) // Ping frame
-                {
-                }
-                else if (opcode == 0x0A) // Pong frame
-                {
+                    buffer.RemoveRange(0, payloadOffset + payloadLength);
+                    continue; // don't surface ping/pong as app messages
                 }
 
                 messages.Add(payload);
                 buffer.RemoveRange(0, payloadOffset + payloadLength);
-
-                // Stop if this is the final frame
-                //if (isFinalFrame) break; <--
             }
 
             return messages;
@@ -93,37 +78,33 @@ namespace PiGSF.Server
 
         public static byte[] CreateFrame(byte[] payload, bool isText = true, bool isFinal = true)
         {
-            List<byte> frame = new();
+            var frame = new List<byte>(2 + payload.Length + 10);
 
-            // FIN bit and Opcode
-            byte finAndOpcode = (byte)((isFinal ? 0b10000000 : 0x00) | (isText ? 0x01 : 0x02));
+            byte finAndOpcode = (byte)((isFinal ? 0b1000_0000 : 0x00) | (isText ? 0x01 : 0x02));
             frame.Add(finAndOpcode);
 
-            // Mask bit and Payload length
-            if (payload.Length <= 125)
-            {
-                frame.Add((byte)payload.Length);
-            }
-            else if (payload.Length <= ushort.MaxValue)
+            int len = payload.Length;
+            if (len <= 125)
+                frame.Add((byte)len);
+            else if (len <= ushort.MaxValue)
             {
                 frame.Add(126);
-                frame.AddRange(BitConverter.GetBytes((ushort)payload.Length));
+                Span<byte> tmp = stackalloc byte[2];
+                BinaryPrimitives.WriteUInt16BigEndian(tmp, (ushort)len);
+                frame.AddRange(tmp.ToArray());
             }
             else
             {
                 frame.Add(127);
-                frame.AddRange(BitConverter.GetBytes((ulong)payload.Length));
+                Span<byte> tmp = stackalloc byte[8];
+                BinaryPrimitives.WriteUInt64BigEndian(tmp, (ulong)len);
+                frame.AddRange(tmp.ToArray());
             }
 
-            // Add payload (unmasked for server)
             frame.AddRange(payload);
-
             return frame.ToArray();
         }
 
-        public byte[] CreateMessage(byte[] source)
-        {
-            return CreateFrame(source, false, true);
-        }
+        public byte[] CreateMessage(byte[] source) => CreateFrame(source, false, true);
     }
 }
