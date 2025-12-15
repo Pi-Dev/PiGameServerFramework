@@ -62,6 +62,7 @@ namespace PiGSF.Server
         {
             var t = StartServer();
             ConsoleInterfaceLoop();
+			
             t.Join();
         }
     }
