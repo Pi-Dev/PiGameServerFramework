@@ -47,11 +47,55 @@ namespace PiGSF.Server
             ContentType = contentType;
             BinaryData = data;
         }
-        public static Response Binary(byte[] data, int status=200) => new Response(status, "text/plain", data);
-        public static Response Text(string body, int status=200) => new Response(status, "text/plain", body);
-        public static Response Html(string body, int status=200) => new Response(status, "text/html", body);
-        public static Response Json(string body, int status=200) => new Response(status, "text/json", body);
+        public static Response Binary(byte[] data, int status = 200) => new Response(status, "text/plain", data);
+        public static Response Text(string body, int status = 200) => new Response(status, "text/plain", body);
+        public static Response Html(string body, int status = 200) => new Response(status, "text/html", body);
+        public static Response Json(string body, int status = 200) => new Response(status, "text/json", body);
         //public static Response Json(JsonNode node, int status=200) => new Response(status, "text/json", node.ToJsonString());
+
+        public Response EnableCors(Request req,
+            Func<string, bool>? allowOrigin = null,
+            bool allowCredentials = false,
+            string allowMethods = "GET, POST, OPTIONS",
+            string allowHeaders = "Content-Type, Authorization",
+            int maxAgeSeconds = 86400)
+        {
+            if (req == null) return this;
+            var origin = req.GetHeader("Origin");
+            if (string.IsNullOrWhiteSpace(origin)) return this;
+
+            bool ok;
+            if (allowOrigin != null) ok = allowOrigin(origin);
+            else ok = Uri.TryCreate(origin, UriKind.Absolute, out _); // default: echo back any valid origin
+            if (!ok) return this;
+
+            ExtraHeaders["Access-Control-Allow-Origin"] = origin;
+            ExtraHeaders["Vary"] = "Origin";
+            ExtraHeaders["Access-Control-Allow-Methods"] = allowMethods;
+            ExtraHeaders["Access-Control-Allow-Headers"] = allowHeaders;
+            ExtraHeaders["Access-Control-Max-Age"] = maxAgeSeconds.ToString();
+            if (allowCredentials) ExtraHeaders["Access-Control-Allow-Credentials"] = "true";
+            return this;
+        }
+
+        public Response EnableCors(Request req, params string[] allowedOrigins)
+        {
+            if (allowedOrigins == null || allowedOrigins.Length == 0)
+                return EnableCors(req, (Func<string, bool>?)null);
+            return EnableCors(req, o => allowedOrigins.Contains(o, StringComparer.OrdinalIgnoreCase));
+        }
+
+        public static Response CorsPreflight(Request req,
+            Func<string, bool>? allowOrigin = null,
+            bool allowCredentials = false,
+            string allowMethods = "GET, POST, OPTIONS",
+            string allowHeaders = "Content-Type, Authorization",
+            int maxAgeSeconds = 86400)
+        {
+            var r = new Response(204, "text/plain", "");
+            r.EnableCors(req, allowOrigin, allowCredentials, allowMethods, allowHeaders, maxAgeSeconds);
+            return r;
+        }
     }
 
     public static class RESTManager

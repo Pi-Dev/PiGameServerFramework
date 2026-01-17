@@ -224,7 +224,7 @@ namespace PiGSF.Server
                 int byteCount = response.BinaryData != null ? response.BinaryData.Length : Encoding.UTF8.GetByteCount(response!.Body);
 
                 string httpResponse = $"HTTP/1.1 {response.StatusCode} {GetStatusMessage(response.StatusCode)}\r\n" +
-                                      $"Content-Type: {byteCount}\r\n" +
+                                      $"Content-Type: {response.ContentType}\r\n" +
                                       $"Content-Length: {byteCount}\r\n" +
                                       $"Connection: Close\r\n" +
                                       string.Join("", response.ExtraHeaders.Select(header => $"{header.Key}: {header.Value}\r\n")) +
@@ -557,7 +557,7 @@ namespace PiGSF.Server
                         while (SendMessageQueue.TryDequeue(out var sd))
                         {
                             var idArray = sd.message.Take(2).ToArray();
-                            ServerLogger.Log($"MSG={Encoding.UTF8.GetString(idArray)} [{string.Join(" ", idArray.Select(b => b.ToString("X2")))}]");
+                            // ServerLogger.Log($"MSG={Encoding.UTF8.GetString(idArray)} [{string.Join(" ", idArray.Select(b => b.ToString("X2")))}]");
 
                             var sock = sd.state.socket;
                             if (!socketsToWrite.Contains(sock)) { requeueBuffer.Add(sd); continue; }
