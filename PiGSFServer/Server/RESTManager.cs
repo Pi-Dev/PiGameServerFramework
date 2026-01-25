@@ -116,6 +116,7 @@ namespace PiGSF.Server
         public static void Register(string path, Func<Request, Response> callback) => Register("GET", path, callback);
         public static void Register(string method, string path, Func<Request, Response> callback)
         {
+            if (!path.StartsWith("/")) path = path.Insert(0, "/");
             RouteLock.EnterWriteLock();
             try
             {
@@ -132,6 +133,7 @@ namespace PiGSF.Server
         public static void Unregister(string path) => Unregister("GET", path);
         public static void Unregister(string method, string path)
         {
+            if (!path.StartsWith("/")) path = path.Insert(0, "/");
             RouteLock.EnterWriteLock();
             try
             {

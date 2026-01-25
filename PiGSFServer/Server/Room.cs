@@ -412,32 +412,36 @@ namespace PiGSF.Server
 
         // Disposable
         private bool disposedValue;
+        static readonly object RoomDisposeMutex = new();
         protected virtual void Dispose(bool disposing)
         {
-            if (!disposedValue)
+            lock (RoomDisposeMutex)
             {
-                // defaultRoom is a special case - first zero it down, causing players to be disconnected
-                if(this == defaultRoom) defaultRoom = null;
+                if (!disposedValue)
+                {
+                    // defaultRoom is a special case - first zero it down, causing players to be disconnected
+                    if (this == defaultRoom) defaultRoom = null;
 
-                // Remove this room from all referenced player
-                players.ForEach(p =>
-                {
-                    p.rooms.Remove(this);
-                    if (p.activeRoom == this) p.activeRoom = null;
-                    if (p.rooms.Count == 0 && p.activeRoom == null)
+                    // Remove this room from all referenced player
+                    players.ForEach(p =>
                     {
-                        if (defaultRoom == null)
-                            p.Disconnect();
-                        else p.JoinRoom(defaultRoom, true);
+                        p.rooms.Remove(this);
+                        if (p.activeRoom == this) p.activeRoom = null;
+                        if (p.rooms.Count == 0 && p.activeRoom == null)
+                        {
+                            if (defaultRoom == null)
+                                p.Disconnect();
+                            else p.JoinRoom(defaultRoom, true);
+                        }
+                    });
+                    if (disposing)
+                    {
+                        rooms.Remove(this);
+                        roomsById.TryRemove(Id, out _);
+                        namedRooms.TryRemove(Name, out _);
                     }
-                });
-                if (disposing)
-                {
-                    rooms.Remove(this);
-                    roomsById.TryRemove(Id, out _);
-                    namedRooms.TryRemove(Name, out _);
+                    disposedValue = true;
                 }
-                disposedValue = true;
             }
         }
         public void Dispose()

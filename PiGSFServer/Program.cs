@@ -76,8 +76,7 @@ namespace PiGSF
 
             // Create a Web Server
             var wwwpath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) + "/wwwroot";
-            RESTManager.Register("/", new StaticFileServer(wwwpath + "/index.html"));
-            RESTManager.Register("/*", new StaticFileServer(wwwpath));
+            RESTManager.Register("/*", new StaticFileServer(wwwpath, "/", false));
 
             // Start the server
             ServerCLI.StartServer();
