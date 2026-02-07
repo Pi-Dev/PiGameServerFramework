@@ -40,6 +40,9 @@ namespace PiGSF.Server
         // MMR test
         public double MMR = 1000;
 
+        // Trust factor
+        public float trust = 100;
+
         public JObject? ToJson()
         {
             //if (playerData == null) return null;

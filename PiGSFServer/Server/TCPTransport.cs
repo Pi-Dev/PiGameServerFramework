@@ -456,10 +456,19 @@ namespace PiGSF.Server
         }
 
         // class with send request for a sender worker
-        internal class SendPacket
+        public class SendPacket
         {
             internal ClientState state;
             internal byte[] message;
+            public override string ToString()
+            {
+                try
+                {
+                    var pid = new string(new[] { (char)message[0], (char)message[1] });
+                    return $"{pid} -> {state.player.username}";
+                }
+                catch { return $"## -> {state.player.username}"; }
+            }
         }
 
         // TCP Worker processes the messages

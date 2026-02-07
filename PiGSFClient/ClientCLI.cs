@@ -100,7 +100,8 @@ namespace PiGSF.Client
         {
             public Task task;
         }
-
+		
+		// Classic Denial of Service Spammer
         public static int Main(string[] args)
         {
             int ntests = ClientConfig.numberOfTests;

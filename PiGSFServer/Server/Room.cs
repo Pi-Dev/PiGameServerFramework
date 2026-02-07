@@ -282,6 +282,13 @@ namespace PiGSF.Server
         }
 
         // Thread safe!!
+        public bool HasPlayer(Player player)
+        {
+            if (player == null) return false;
+            return players.Contains(player);
+        }
+
+        // Thread safe!!
         public void BanPlayer(Player player)
         {
             if (player == null) return;
