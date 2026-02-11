@@ -6,30 +6,75 @@ namespace PiGSF.Server
 {
     internal class GameServerProtocol : IProtocol
     {
-        private const int HeaderSize = 2;
+        private const int HeaderSize = sizeof(ushort);
+        private const int ExtraHeaderSize = sizeof(uint);
+        private const ushort ExtendedLengthMarker = 0xFFFF;
         private List<byte> buffer = new();
 
         public List<byte[]> AddData(Span<byte> bytes)
         {
             buffer.AddRange(bytes.ToArray());
             var result = new List<byte[]>();
-            while (buffer.Count >= HeaderSize)
+            bool processing = true;
+
+            while (processing)
             {
-                int messageLength = BitConverter.ToUInt16(buffer.ToArray(), 0);
-                if (buffer.Count < HeaderSize + messageLength) break; // Not enough data for the full message
-                var message = buffer.GetRange(HeaderSize, messageLength).ToArray();
+                if (buffer.Count < HeaderSize)
+                {
+                    processing = false;
+                    continue;
+                }
+
+                ushort header = BitConverter.ToUInt16(buffer.ToArray(), 0);
+                int totalHeaderSize = HeaderSize;
+                uint messageLength;
+
+                if (header == ExtendedLengthMarker)
+                {
+                    if (buffer.Count < HeaderSize + ExtraHeaderSize)
+                    {
+                        processing = false;
+                        continue;
+                    }
+
+                    messageLength = BitConverter.ToUInt32(buffer.ToArray(), HeaderSize);
+                    totalHeaderSize = HeaderSize + ExtraHeaderSize;
+                }
+                else
+                {
+                    messageLength = header;
+                }
+
+                if (buffer.Count < totalHeaderSize + messageLength)
+                {
+                    processing = false;
+                    continue;
+                }
+
+                var message = buffer.GetRange(totalHeaderSize, (int)messageLength).ToArray();
                 result.Add(message);
-                buffer.RemoveRange(0, HeaderSize + messageLength);
+                buffer.RemoveRange(0, totalHeaderSize + (int)messageLength);
             }
+
             return result;
         }
 
         public byte[] CreateMessage(byte[] source)
         {
-            var ms = new MemoryStream(source.Length + 2);
-            var bw = new BinaryWriter(ms);
-            bw.Write((ushort)source.Length);
-            bw.Write(source, 0, source.Length);
+            using var ms = new MemoryStream();
+            using var bw = new BinaryWriter(ms);
+
+            if (source.Length < ExtendedLengthMarker)
+            {
+                bw.Write((ushort)source.Length);
+            }
+            else
+            {
+                bw.Write(ExtendedLengthMarker);
+                bw.Write((uint)source.Length);
+            }
+
+            bw.Write(source);
             return ms.ToArray();
         }
     }
