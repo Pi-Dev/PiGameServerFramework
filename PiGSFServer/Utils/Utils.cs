@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace PiGSF.Utils
@@ -145,6 +146,16 @@ namespace PiGSF.Utils
             if (!dict.TryGetValue(key, out val))
             {
                 val = new TValue();
+                dict.Add(key, val);
+            }
+            return val;
+        }
+        public static TValue GetOrCreate<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, TValue defval) where TValue : new()
+        {
+            TValue val;
+            if (!dict.TryGetValue(key, out val))
+            {
+                val = defval;
                 dict.Add(key, val);
             }
             return val;

@@ -46,7 +46,8 @@ public static class ServerLogger
         currentOutputChannel = room.Log.roomBuffer;
         RenderCurrentChannel();
     }
-    static object renderLocker = new object();
+    public static readonly object renderLocker = new object();
+
     static void RenderCurrentChannel()
     {
         var sb = new StringBuilder();
