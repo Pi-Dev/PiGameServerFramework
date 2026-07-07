@@ -29,6 +29,7 @@ namespace PiGSF.Server
 
         public int ConnectionTimeout = ServerConfig.DefaultRoomConnectionTimeout;
         public int PlayerDisbandTimeout = -1;
+        public static bool WaitForDebuggerOnRoomException;
 
         // Connected players and banned players
         internal protected ConcurrentList<Player> players = new();
@@ -97,16 +98,17 @@ namespace PiGSF.Server
 
             ServerLogger.Log("Thread for room " + GetType().Name + " started");
 
-            // 0. Initialize the room
-            Setup();
-
-            // 1. Determine when first Update must be called
-            var stopwatch = new Stopwatch();
-            stopwatch.Start();
-            long tickIntervalTicks = (long)(Stopwatch.Frequency * TickInterval);
-            long nextUpdateTick = stopwatch.ElapsedTicks + tickIntervalTicks;
             try
             {
+                // 0. Initialize the room
+                Setup();
+
+                // 1. Determine when first Update must be called
+                var stopwatch = new Stopwatch();
+                stopwatch.Start();
+                long tickIntervalTicks = (long)(Stopwatch.Frequency * TickInterval);
+                long nextUpdateTick = stopwatch.ElapsedTicks + tickIntervalTicks;
+
                 while (true) // breaks when RoomStopEvent received
                 {
                     Thread.Yield(); // Yield hint for others to run...
@@ -139,7 +141,22 @@ namespace PiGSF.Server
             }
             catch (Exception e)
             {
-                string message = $"ROOM {Id}: {GetType().Name} ENCOUNTERED ERROR:\n" + e.ToString();
+#if UNITY_5_3_OR_NEWER
+                UnityEngine.Debug.LogException(e);
+#else
+                if (WaitForDebuggerOnRoomException)
+                {
+                    ServerLogger.Log("Waiting for debugger before handling room exception...");
+                    while (!Debugger.IsAttached) Thread.Sleep(100);
+                    Debugger.Break();
+                }
+                else
+                {
+                    if(Debugger.IsAttached) Debugger.Break();
+                }
+#endif
+
+                    string message = $"ROOM {Id}: {GetType().Name} ENCOUNTERED ERROR:\n" + e.ToString();
                 ServerLogger.Log(message);
                 Log.Write(message);
                 if (Room.defaultRoom == this)
