@@ -141,12 +141,18 @@ namespace PiGSF.Server
             }
             catch (Exception e)
             {
+                string message = $"ROOM {Id}: {GetType().Name} ENCOUNTERED ERROR:\n" + e.ToString();
+                ServerLogger.Log(message);
+                Log.Write(message);
+
 #if UNITY_5_3_OR_NEWER
                 UnityEngine.Debug.LogException(e);
 #else
                 if (WaitForDebuggerOnRoomException)
                 {
-                    ServerLogger.Log("Waiting for debugger before handling room exception...");
+                    string debugWaitMessage = "DEBUG! WAITING FOR DEBUGGER TO ATTACH before handling room exception...";
+                    ServerLogger.Log(debugWaitMessage);
+                    Log.Write(debugWaitMessage);
                     while (!Debugger.IsAttached) Thread.Sleep(100);
                     Debugger.Break();
                 }
@@ -156,9 +162,6 @@ namespace PiGSF.Server
                 }
 #endif
 
-                    string message = $"ROOM {Id}: {GetType().Name} ENCOUNTERED ERROR:\n" + e.ToString();
-                ServerLogger.Log(message);
-                Log.Write(message);
                 if (Room.defaultRoom == this)
                 {
                     message = "CRITICAL! THE DEFAULT ROOM CRASHED!";
