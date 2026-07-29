@@ -27,10 +27,21 @@ namespace PiGSF.Server
 
         public static void ConsoleInterfaceLoop()
         {
+            if(Console.IsInputRedirected) 
+            {
+                ServerLogger.Log("WARNING: It's impossible to interact with the server because no STDIn is attached.");
+                ServerLogger.Log("WARNING: If running under Docker, run with -it");
+            }
+            
             UpdatePromptLoop();
             while (!Server.IsActive()) Thread.Sleep(16);
             while (Server.IsActive())
             {                
+                if (Console.IsInputRedirected || !Console.KeyAvailable)
+                {
+                    continue;
+                }
+
                 // INPUT 
                 {
                     var key = Console.ReadKey(false);

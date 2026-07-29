@@ -52,7 +52,7 @@ namespace PiGSF.Server
         internal class RoomStopEvent : IRoomEvent { }
         internal class RoomStartEvent : IRoomEvent { }
         internal class ShutdownRequest : IRoomEvent { }
-        internal class ServerCommand : IRoomEvent { public string command=""; }
+        internal class ServerCommand : IRoomEvent { public string command = ""; }
         internal ConcurrentQueue<IRoomEvent> messageQueue = new();
 
         private volatile bool _isStarted = false;
@@ -77,7 +77,7 @@ namespace PiGSF.Server
                 OnPlayerDisconnected(pd.pl, pd.disband);
             else if (item is RoomStartEvent)
             {
-                if (_isStarted)
+                if (!_isStarted)
                 {
                     _isStarted = true;
                     Start();
@@ -92,6 +92,7 @@ namespace PiGSF.Server
             return true;
         }
 
+        static volatile bool ShouldRecreateDefaultRoom = false;
         void RoomThread()
         {
             roomThreadId = Thread.CurrentThread.ManagedThreadId;
@@ -158,7 +159,7 @@ namespace PiGSF.Server
                 }
                 else
                 {
-                    if(Debugger.IsAttached) Debugger.Break();
+                    if (Debugger.IsAttached) Debugger.Break();
                 }
 #endif
 
@@ -168,9 +169,19 @@ namespace PiGSF.Server
                     ServerLogger.Log(message);
                     Log.Write(message);
                     Room.defaultRoom = null;
-                    Room.defaultRoom = CreateDefaultRoom?.Invoke();
+                    ShouldRecreateDefaultRoom = true;
                 }
-                Dispose();
+                Dispose(); // calls Stop
+                if (ShouldRecreateDefaultRoom)
+                {
+                    try
+                    {
+                        Room.defaultRoom = CreateDefaultRoom?.Invoke();
+                    }
+                    catch (Exception ex) { ServerLogger.Log(ex.ToString()); Debugger.Break(); }
+                    ShouldRecreateDefaultRoom = false;
+                    if (Room.defaultRoom == null && Room.rooms.Count == 0) Server.Stop();
+                }
             }
         }
 
@@ -196,7 +207,7 @@ namespace PiGSF.Server
 
         // Lifecycle methods, called from the Room Thread, in the Room Thread
         // Must be reimplemented by the room gamelogic for server-authoritative games
-        
+
         protected virtual void Setup()
         {
             Debug.Assert(Thread.CurrentThread.ManagedThreadId == roomThreadId);
@@ -246,7 +257,7 @@ namespace PiGSF.Server
             foreach (var r in ts)
             {
                 // this line IS important as it will call the static ctors
-                ServerLogger.Log($"|- {r.Name} [{r.FullName}]"); 
+                ServerLogger.Log($"|- {r.Name} [{r.FullName}]");
             }
             ServerLogger.Log("|");
             return ts;
@@ -257,7 +268,7 @@ namespace PiGSF.Server
         public static Func<Room> CreateDefaultRoom = () =>
         {
             roomTypes = InitRoomTypes();
-            var tokens = ServerConfig.Get("defaultRoom").Split(",").Select(s=>s.Trim()).ToArray();
+            var tokens = ServerConfig.Get("defaultRoom").Split(",").Select(s => s.Trim()).ToArray();
             if (tokens.Length > 1)
             {
                 List<Type> t = roomTypes.Where(x => x.Name.ToLower() == tokens[0].ToLower()).ToList();
@@ -470,6 +481,7 @@ namespace PiGSF.Server
                     disposedValue = true;
                 }
             }
+            if (!ShouldRecreateDefaultRoom && rooms.Count == 0) Server.Stop();
         }
         public void Dispose()
         {

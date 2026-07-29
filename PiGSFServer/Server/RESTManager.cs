@@ -56,23 +56,19 @@ namespace PiGSF.Server
         public Response EnableCors(Request req,
             Func<string, bool>? allowOrigin = null,
             bool allowCredentials = false,
-            string allowMethods = "GET, POST, OPTIONS",
-            string allowHeaders = "Content-Type, Authorization",
+            string allowMethods = "*",
+            string allowHeaders = "*",
             int maxAgeSeconds = 86400)
         {
             if (req == null) return this;
             var origin = req.GetHeader("Origin");
-            if (string.IsNullOrWhiteSpace(origin)) return this;
+            if (!string.IsNullOrWhiteSpace(origin) && allowOrigin != null && !allowOrigin(origin)) return this;
 
-            bool ok;
-            if (allowOrigin != null) ok = allowOrigin(origin);
-            else ok = Uri.TryCreate(origin, UriKind.Absolute, out _); // default: echo back any valid origin
-            if (!ok) return this;
-
-            ExtraHeaders["Access-Control-Allow-Origin"] = origin;
+            var requestedHeaders = req.GetHeader("Access-Control-Request-Headers");
+            ExtraHeaders["Access-Control-Allow-Origin"] = "*";
             ExtraHeaders["Vary"] = "Origin";
             ExtraHeaders["Access-Control-Allow-Methods"] = allowMethods;
-            ExtraHeaders["Access-Control-Allow-Headers"] = allowHeaders;
+            ExtraHeaders["Access-Control-Allow-Headers"] = string.IsNullOrWhiteSpace(requestedHeaders) ? allowHeaders : requestedHeaders;
             ExtraHeaders["Access-Control-Max-Age"] = maxAgeSeconds.ToString();
             if (allowCredentials) ExtraHeaders["Access-Control-Allow-Credentials"] = "true";
             return this;
@@ -88,8 +84,8 @@ namespace PiGSF.Server
         public static Response CorsPreflight(Request req,
             Func<string, bool>? allowOrigin = null,
             bool allowCredentials = false,
-            string allowMethods = "GET, POST, OPTIONS",
-            string allowHeaders = "Content-Type, Authorization",
+            string allowMethods = "*",
+            string allowHeaders = "*",
             int maxAgeSeconds = 86400)
         {
             var r = new Response(204, "text/plain", "");

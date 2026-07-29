@@ -377,7 +377,9 @@ namespace PiGSF.Server
         internal static volatile bool ServerStopRequested = false;
         public static async void Stop()
         {
+            if(ServerStopRequested) return;
             ServerStopRequested = true;
+            ServerLogger.Log("Server Stop Requested!");
             // Terminate listeners
             try
             {
