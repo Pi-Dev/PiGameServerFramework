@@ -10,10 +10,10 @@ namespace PiGSF.Client
 {
     public static class ClientConfig
     {
-        public static string serverAddress = "chessocracy.com";
-        //public static string serverAddress = "127.0.0.1";
+        //public static string serverAddress = "chessocracy.com";
+        public static string serverAddress = "127.0.0.1";
         public static int serverPort = 8443;
-        public static int numberOfTests = 2;
+        public static int numberOfTests = 100;
 
         // Server config
         public static int HeaderSize = 2;

@@ -1,4 +1,7 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
+using System.Net.Http;
+using System.Net.Security;
+using System.Net.Sockets;
 using System.Text;
 
 namespace PiGSF.Client
@@ -78,7 +81,6 @@ namespace PiGSF.Client
             if (Interlocked.CompareExchange(ref rendering, 1, 0) != 0) return;
             try
             {
-                // Rendering operations
                 lock (renderLocker)
                 {
                     Console.Clear();
@@ -88,7 +90,6 @@ namespace PiGSF.Client
             }
             finally
             {
-                // Reset the flag
                 rendering = 0;
             }
         }
@@ -100,17 +101,189 @@ namespace PiGSF.Client
         {
             public Task task;
         }
-		
-		// Classic Denial of Service Spammer
+
         public static int Main(string[] args)
         {
+            Console.WriteLine("Tests");
             int ntests = ClientConfig.numberOfTests;
+            //HTTPConcurrentTest(300);
+            HTTPKeepAliveSequentialTest(1000, 100);
+            //HTTPPipelineTest(100);
+            //HTTPRandomPostTest();
+            //PlayersSpamTest(ntests);
+            Console.WriteLine("DONE!");
+            return 0;
+        }
+
+        static string GetBaseUrl()
+        {
+            //var scheme = ClientConfig.serverPort == 8443 ? "https" : "http";
+            var scheme = "https";
+            return $"{scheme}://{ClientConfig.serverAddress}:{ClientConfig.serverPort}";
+        }
+
+        static void HTTPConcurrentTest(int ntests)
+        {
+            var url = $"{GetBaseUrl()}/count";
+            var tasks = new Task[ntests];
             for (int i = 0; i < ntests; i++)
             {
-                TCPTest(i.ToString(), (ConsoleColor)((i + 6) % Enum.GetValues<ConsoleColor>().Length));
+                int id = i;
+                tasks[i] = Task.Run(async () =>
+                {
+                    using var http = new HttpClient();
+                    try
+                    {
+                        var text = await http.GetStringAsync(url);
+                        Console.WriteLine($"[{id}] {text}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[{id}] ERR {ex.Message}");
+                    }
+                });
+            }
+            Task.WaitAll(tasks);
+        }
+
+        static void HTTPKeepAliveSequentialTest(int ntests, int numberRequestsPerConnection)
+        {
+            var url = $"{GetBaseUrl()}/count";
+            var handler = new SocketsHttpHandler
+            {
+                SslOptions = { RemoteCertificateValidationCallback = (_, _, _, _) => true },
+                PooledConnectionLifetime = Timeout.InfiniteTimeSpan,
+                PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
+                MaxConnectionsPerServer = ntests,
+                EnableMultipleHttp2Connections = false
+            };
+
+            using var http = new HttpClient(handler);
+            var connections = new Task[ntests];
+            for (int i = 0; i < ntests; i++)
+            {
+                int id = i;
+                connections[i] = Task.Run(async () =>
+                {
+                    for (int j = 0; j < numberRequestsPerConnection; j++)
+                    {
+                        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                        request.Version = new Version(1, 1);
+                        request.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
+                        using var response = await http.SendAsync(request);
+                        var text = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine($"[{id}:{j}] {(int)response.StatusCode} {text}");
+                    }
+                });
+            }
+            Task.WaitAll(connections);
+        }
+
+        static void HTTPPipelineTest(int ntests)
+        {
+            using var tcp = new TcpClient();
+            //tcp.NoDelay = true;
+            tcp.Connect(ClientConfig.serverAddress, ClientConfig.serverPort);
+
+            using var ssl = new SslStream(tcp.GetStream(), false, (_, _, _, _) => true);
+            ssl.AuthenticateAsClient(ClientConfig.serverAddress);
+            ssl.ReadTimeout = 10000;
+
+            string host = $"{ClientConfig.serverAddress}:{ClientConfig.serverPort}";
+            for (int i = 0; i < ntests; i++)
+            {
+                bool last = i == ntests - 1;
+                //ssl.Write(Encoding.ASCII.GetBytes($"GET /count HTTP/1.1\r\nHost: {host}\r\nConnection: {(last ? "close" : "keep-alive")}\r\n\r\n"));
+                ssl.Write(Encoding.ASCII.GetBytes($"GET /count HTTP/1.1\r\nHost: {host}\r\nConnection: {"keep-alive"}\r\n\r\n"));
+                ssl.Flush();
             }
 
-            // filter
+            var reader = new Thread(() =>
+            {
+                var recv = new byte[1024];
+                var acc = new List<byte>();
+                try
+                {
+                    while (true)
+                    {
+                        int n = ssl.Read(recv, 0, recv.Length);
+                        if (n <= 0) break;
+                        acc.AddRange(recv.AsSpan(0, n).ToArray());
+                        while (TryReadHttpResponse(acc, out var response))
+                            Console.WriteLine(response);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("PIPELINE DONE: " + ex.Message);
+                }
+            });
+            reader.Start();
+
+
+            reader.Join();
+        }
+
+        static void HTTPRandomPostTest()
+        {
+            var rng = new Random();
+            //var data = new byte[1024 * 1024];
+            var data = new byte[1024 * 1024];
+            rng.NextBytes(data);
+
+            int expected = 0;
+            for (int i = 0; i < data.Length; i++)
+                if (data[i] == 0x7F) expected++;
+
+            var handler = new SocketsHttpHandler
+            {
+                SslOptions = { RemoteCertificateValidationCallback = (_, _, _, _) => true }
+            };
+
+            using var http = new HttpClient(handler);
+            using var content = new ByteArrayContent(data);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            var response = http.PostAsync($"{GetBaseUrl()}/randompost", content).GetAwaiter().GetResult();
+            var text = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            Console.WriteLine($"POST random bytes={data.Length} expected0x7F={expected} response={text}");
+        }
+
+        static bool TryReadHttpResponse(List<byte> acc, out string response)
+        {
+            response = null;
+            int headerEnd = -1;
+            for (int i = 0; i <= acc.Count - 4; i++)
+                if (acc[i] == '\r' && acc[i + 1] == '\n' && acc[i + 2] == '\r' && acc[i + 3] == '\n')
+                {
+                    headerEnd = i;
+                    break;
+                }
+            if (headerEnd < 0) return false;
+
+            var headerText = Encoding.UTF8.GetString(acc.Take(headerEnd).ToArray());
+            int contentLength = 0;
+            foreach (var line in headerText.Split("\r\n"))
+                if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                {
+                    int.TryParse(line.Split(':', 2)[1].Trim(), out contentLength);
+                    break;
+                }
+
+            int fullLength = headerEnd + 4 + contentLength;
+            if (acc.Count < fullLength) return false;
+
+            response = contentLength > 0
+                ? Encoding.UTF8.GetString(acc.Skip(headerEnd + 4).Take(contentLength).ToArray())
+                : "";
+            acc.RemoveRange(0, fullLength);
+            return true;
+        }
+
+        static void PlayersSpamTest(int ntests)
+        {
+            for (int i = 0; i < ntests; i++)
+                TCPTest(i.ToString(), (ConsoleColor)((i + 6) % Enum.GetValues<ConsoleColor>().Length));
+
             if (ntests > 1)
             {
                 while (true)
@@ -119,12 +292,11 @@ namespace PiGSF.Client
                     Log.SetFilter("[" + key);
                 }
             }
-            return 0;
         }
 
         static void TCPTest(string username, ConsoleColor color)
         {
-            var t = new Thread(()=>TCPTestThread(username, color));
+            var t = new Thread(() => TCPTestThread(username, color));
             t.Name = $"TCP TEST {username}";
             t.Start();
         }
@@ -258,12 +430,12 @@ namespace PiGSF.Client
             var t = new Stopwatch();
             t.Start();
             long nt = t.ElapsedMilliseconds + 1 + 500 * new Random().Next(0, 10);
-            //Thread.Sleep(new TimeSpan(0, 3, 0));
             client.SendString($"Hello fellows! [nt={nt}]");
 
-            if(ClientConfig.numberOfTests == 1)
+            if (ClientConfig.numberOfTests == 1)
             {
-                Task.Run(() => {
+                Task.Run(() =>
+                {
                     while (true)
                     {
                         string? input = Console.ReadLine();
@@ -274,32 +446,18 @@ namespace PiGSF.Client
 
             while (true)
             {
-                lock (client.messages) {
+                lock (client.messages)
+                {
                     while (client.messages.TryDequeue(out var m)) Log.Write($"RECV: {Encoding.UTF8.GetString(m)}", color);
                     Monitor.Wait(client.messages, 16);
                 }
-                if(t.ElapsedMilliseconds > nt)
+                if (t.ElapsedMilliseconds > nt)
                 {
                     var nextTime = 1 + 1000 * new Random().Next(0, 10);
                     nt = t.ElapsedMilliseconds + nextTime;
                     string randomMessage = messages[new Random().Next(messages.Length)];
                     client.SendString(randomMessage + $" [nt={nextTime}]");
                 }
-            }
-
-            //while (true)
-            //{
-            //    int st = 1 + 500 * new Random().Next(0, 5);
-            //    Thread.Sleep(st);
-            //    string randomMessage = messages[new Random().Next(messages.Length)];
-            //    client.SendString(randomMessage);
-            //}
-
-            //Start main client loop
-            while (true)
-            {
-                string? input = Console.ReadLine();
-                client.SendString(input);
             }
         }
     }

@@ -10,5 +10,6 @@ namespace PiGSF.Server
         public void Init(int port);
         public void Stop();
         public void StopAccepting();
+        public string GetDebugStats();
     }
 }

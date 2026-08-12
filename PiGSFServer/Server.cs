@@ -20,6 +20,7 @@ namespace PiGSF.Server
     {
         static int port;
         static int NextPlayerId = 1;
+        static int NextHttpRequestId = 0;
         //public static IAuthProvider authenticator;
         static ConcurrentList<ITransport> transports;
 
@@ -46,6 +47,11 @@ namespace PiGSF.Server
             knownPlayers.Add(player);
             knownPlayersByUid[uid] = player;
             return player;
+        }
+
+        public static int AllocateHttpRequestId()
+        {
+            return Interlocked.Increment(ref NextHttpRequestId);
         }
 
         static volatile bool _isActive = false;
@@ -101,6 +107,7 @@ namespace PiGSF.Server
     l [id/name] => Opens log for chosen room
     r [id]      => Shows info for given room by id/name
     rs [name]   => Searches rooms by name (or shows named rooms)
+    tcp, t      => Lists transport/socket worker client-state counts
     q, b, back  => Exits back to main log
     ";
                 ServerLogger.WriteMessageToScreen(helpText);
@@ -192,6 +199,12 @@ namespace PiGSF.Server
                 string str = "";
                 knownPlayers.ForEach(p => { if (p.IsConnected()) str += p.ToTableString() + "\n"; });
                 ServerLogger.WriteMessageToScreen(str.Length > 0 ? str : "No players connected");
+            }
+            else if (s == "tcp" || s == "t")
+            {
+                var sb = new StringBuilder();
+                transports.ForEach(x => sb.AppendLine(x.GetDebugStats()));
+                ServerLogger.WriteMessageToScreen(sb.ToString().TrimEnd());
             }
             else if (s.StartsWith("p "))
             {
