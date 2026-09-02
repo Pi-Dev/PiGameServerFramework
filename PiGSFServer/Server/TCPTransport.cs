@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -51,6 +51,7 @@ namespace PiGSF.Server
             internal Socket socket;
             internal System.IO.Stream stream;
             internal IProtocol protocol;
+            internal string webSocketPath = "";
             internal Player player;
             internal TCPSocketWorker worker;
             internal int ReadMessageState;
@@ -100,7 +101,10 @@ namespace PiGSF.Server
                             // Assign player to a room, OR notify referenced rooms that player is connected
                             var rms = p.rooms;
                             if (p.activeRoom == null && rms.Count == 0)
-                                p.JoinRoom(Room.defaultRoom);
+                                p.JoinRoom(
+                                    Server.ResolveWebSocketRoom?.Invoke(webSocketPath, p)
+                                    ?? Room.defaultRoom,
+                                );
                             else
                                 foreach (var r in rms)
                                     r.AddPlayer(p);

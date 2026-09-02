@@ -1,4 +1,4 @@
-﻿using Auth;
+using Auth;
 using PiGSF.Utils;
 using System;
 using System.Collections.Concurrent;
@@ -22,6 +22,10 @@ namespace PiGSF.Server
         static int NextPlayerId = 1;
         //public static IAuthProvider authenticator;
         static ConcurrentList<ITransport> transports;
+
+        // An HTTP(S)/WSS endpoint may select a service room after the client
+        // authenticates. Returning null keeps the normal default-room flow.
+        public static Func<string, Player, Room?>? ResolveWebSocketRoom;
 
         // Player Database
         static ConcurrentDictionary<string, Player> knownPlayersByUid = new();
