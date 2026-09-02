@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -103,7 +103,7 @@ namespace PiGSF.Server
                             if (p.activeRoom == null && rms.Count == 0)
                                 p.JoinRoom(
                                     Server.ResolveWebSocketRoom?.Invoke(webSocketPath, p)
-                                    ?? Room.defaultRoom,
+                                    ?? Room.defaultRoom
                                 );
                             else
                                 foreach (var r in rms)
@@ -464,6 +464,8 @@ namespace PiGSF.Server
         {
             internal ClientState state;
             internal byte[] message;
+            internal bool preFramed;
+            internal bool closeAfterSend;
             public override string ToString()
             {
                 try
@@ -565,7 +567,7 @@ namespace PiGSF.Server
                         //}
 
                         // drain queue -> batch per socket -> single write per socket
-                        var batches = new Dictionary<Socket, (ClientState st, MemoryStream buf)>(16);
+                        var batches = new Dictionary<Socket, (ClientState st, MemoryStream buf, bool closeAfterSend)>(16);
 
                         while (SendMessageQueue.TryDequeue(out var sd))
                         {
@@ -578,12 +580,15 @@ namespace PiGSF.Server
 
                             if (!batches.TryGetValue(sock, out var entry))
                             {
-                                entry = (sd.state, new MemoryStream(4096));
+                                entry = (sd.state, new MemoryStream(4096), false);
                                 batches.Add(sock, entry);
                             }
 
-                            var framed = sd.state.protocol.CreateMessage(sd.message);
+                            var framed = sd.preFramed ? sd.message : sd.state.protocol.CreateMessage(sd.message);
                             entry.buf.Write(framed, 0, framed.Length);
+
+                            if (sd.closeAfterSend)
+                                batches[sock] = (entry.st, entry.buf, true);
                         }
 
                         // flush per-socket
@@ -599,6 +604,12 @@ namespace PiGSF.Server
                                         st.stream.Write(seg.Array, seg.Offset, seg.Count);
                                     else
                                         st.stream.Write(ms.ToArray(), 0, (int)ms.Length);
+
+                                    if (kv.Value.closeAfterSend)
+                                    {
+                                        st.disconnectRequested = true;
+                                        try { st.socket.Shutdown(SocketShutdown.Both); } catch { }
+                                    }
                                 }
                             }
                             finally { ms.Dispose(); }
