@@ -13,6 +13,10 @@ namespace Auth
         public string username { get; set; } = "guest";
         public string uid { get; set; } = "anon:guest";
         public string avatar { get; set; } = "";
+
+        // Server-only admission target supplied by an authenticator. It is not
+        // serialized to, or controlled by, the connecting client.
+        public PiGSF.Server.Room initialRoom { get; set; }
     }
 
     public interface IAuthProvider

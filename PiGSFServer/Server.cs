@@ -23,10 +23,6 @@ namespace PiGSF.Server
         //public static IAuthProvider authenticator;
         static ConcurrentList<ITransport> transports;
 
-        // An HTTP(S)/WSS endpoint may select a service room after the client
-        // authenticates. Returning null keeps the normal default-room flow.
-        public static Func<string, Player, Room?>? ResolveWebSocketRoom;
-
         // Player Database
         static ConcurrentDictionary<string, Player> knownPlayersByUid = new();
         static internal ConcurrentList<Player> knownPlayers = new();
@@ -447,6 +443,8 @@ namespace PiGSF.Server
                 knownPlayers.Add(player);
                 knownPlayersByUid[pd.uid] = player;
             }
+            if (pd.initialRoom != null)
+                player.activeRoom = pd.initialRoom;
             return player;
         }
 

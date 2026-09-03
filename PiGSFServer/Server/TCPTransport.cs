@@ -100,11 +100,14 @@ namespace PiGSF.Server
 
                             // Assign player to a room, OR notify referenced rooms that player is connected
                             var rms = p.rooms;
-                            if (p.activeRoom == null && rms.Count == 0)
-                                p.JoinRoom(
-                                    Server.ResolveWebSocketRoom?.Invoke(webSocketPath, p)
-                                    ?? Room.defaultRoom
-                                );
+                            if (p.activeRoom != null && !p.activeRoom.HasPlayer(p))
+                            {
+                                // Authenticators may assign an admission room
+                                // before the transport is bound to the Player.
+                                p.activeRoom.AddPlayer(p);
+                            }
+                            else if (p.activeRoom == null && rms.Count == 0)
+                                p.JoinRoom(Room.defaultRoom);
                             else
                                 foreach (var r in rms)
                                     r.AddPlayer(p);
@@ -139,8 +142,10 @@ namespace PiGSF.Server
             {
                 var lines = httpRequest.Split("\r\n");
 
-                // Verify HTTP structure and ensure headers end with \r\n\r\n
-                if (!(lines[0].Contains("HTTP/") && httpRequest.EndsWith("\r\n\r\n")))
+                // A request must contain a complete header block. POST/PUT bodies
+                // follow that delimiter, so requiring the entire request to end
+                // there rejects every request that carries a body.
+                if (!(lines[0].Contains("HTTP/") && httpRequest.Contains("\r\n\r\n")))
                 {
                     client.Close();
                     disconnectRequested = true;
