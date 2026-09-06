@@ -14,7 +14,7 @@ namespace PiGSF.Server
     {
         // Room identification
         public readonly int Id;
-        public readonly string Name;
+        public string Name { get; private set; }
 
         // Room properties
         public double TickInterval = 1.0 / 60.0; // Default to 60 ticks per second
@@ -189,6 +189,15 @@ namespace PiGSF.Server
             var t = new Thread(RoomThread);
             t.Name = $"Room {Id}: {GetType().Name}";
             t.Start();
+        }
+
+        /// <summary>Updates a named room without leaving its old name in the registry.</summary>
+        protected void Rename(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || string.Equals(Name, name, StringComparison.Ordinal)) return;
+            namedRooms.TryRemove(Name, out _);
+            Name = name;
+            namedRooms[name] = this;
         }
 
         // Lifecycle methods, called from the Room Thread, in the Room Thread
@@ -463,6 +472,10 @@ namespace PiGSF.Server
                         rooms.Remove(this);
                         roomsById.TryRemove(Id, out _);
                         namedRooms.TryRemove(Name, out _);
+                        // Every Room owns a worker thread. Disposal must also
+                        // terminate it; callers should not need a second,
+                        // room-type-specific Stop() call.
+                        Stop();
                     }
                     disposedValue = true;
                 }
