@@ -280,7 +280,10 @@ namespace PiGSF.Server
         {
             messageQueue.EnqueueAndNotify(new RoomStopEvent());
         }
-        public volatile bool eligibleForDeletion = false;
+        // Rooms are disposable by default. Long-lived gameplay rooms opt out
+        // while their game is active; room implementations must re-enable
+        // deletion when they return to a lobby/redirect state.
+        public volatile bool eligibleForDeletion = true;
 
         public void BroadcastMessage(byte[] data, Player? sender = null)
         {
