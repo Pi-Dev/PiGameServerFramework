@@ -106,12 +106,21 @@ namespace PiGSF.Server
                 // 1. Determine when first Update must be called
                 var stopwatch = new Stopwatch();
                 stopwatch.Start();
-                long tickIntervalTicks = (long)(Stopwatch.Frequency * TickInterval);
+                double activeTickInterval = Math.Max(0.001, TickInterval);
+                long tickIntervalTicks = (long)(Stopwatch.Frequency * activeTickInterval);
                 long nextUpdateTick = stopwatch.ElapsedTicks + tickIntervalTicks;
 
                 while (true) // breaks when RoomStopEvent received
                 {
                     Thread.Yield(); // Yield hint for others to run...
+
+                    double requestedTickInterval = Math.Max(0.001, TickInterval);
+                    if (requestedTickInterval != activeTickInterval)
+                    {
+                        activeTickInterval = requestedTickInterval;
+                        tickIntervalTicks = (long)(Stopwatch.Frequency * activeTickInterval);
+                        nextUpdateTick = stopwatch.ElapsedTicks + tickIntervalTicks;
+                    }
 
                     // 1. Process messages until close to next update time or queue is empty
                     while (stopwatch.ElapsedTicks < nextUpdateTick - Stopwatch.Frequency / 1000 * 1
@@ -126,7 +135,7 @@ namespace PiGSF.Server
                     // 3. Finally, call Update
                     if (stopwatch.ElapsedTicks >= nextUpdateTick)
                     {
-                        Update((float)TickInterval);
+                        Update((float)activeTickInterval);
                         nextUpdateTick = stopwatch.ElapsedTicks + tickIntervalTicks;
 
                         if (stopwatch.ElapsedTicks > nextUpdateTick)
