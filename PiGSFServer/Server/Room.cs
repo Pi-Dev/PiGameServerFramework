@@ -287,7 +287,7 @@ namespace PiGSF.Server
 
         public void BroadcastMessage(byte[] data, Player? sender = null)
         {
-            Debug.Assert(Thread.CurrentThread.ManagedThreadId == roomThreadId);
+            //Debug.Assert(Thread.CurrentThread.ManagedThreadId == roomThreadId);
             players.ForEach(p => { if (sender == null || p != sender) p.Send(data); });
         }
 
