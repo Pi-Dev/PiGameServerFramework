@@ -67,7 +67,10 @@ namespace PiGSF.Server
 
 public static class ServerConfig
 {
-    static ServerConfig()
+    static ServerConfig() => Reload();
+
+    /// <summary>Reloads PIGSFServerConfig.cfg from the server user's home directory.</summary>
+    public static void Reload()
     {
         // Default config, hard-coded, and very limited.
         // You are supposed to build the server and implement your game types
@@ -97,7 +100,7 @@ public static class ServerConfig
         }
 
         // Apply to the class
-        ServerConfig.config = new ReadOnlyDictionary<string, string>(defaultConfig);
+        config = new ReadOnlyDictionary<string, string>(defaultConfig);
     }
 
     // Packet size and format
@@ -105,7 +108,7 @@ public static class ServerConfig
     public static int MaxInitialPacketSize = 4 * 1024; // by default 4k for JWT payload
 
     // Implementation details
-    static ReadOnlyDictionary<string, string> config;
+    static volatile ReadOnlyDictionary<string, string> config;
     public static string Get(string key, string defval = "") => config.GetValueOrDefault(key, defval);
     public static int GetInt(string key, int defval = 0)
     {
