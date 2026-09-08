@@ -443,6 +443,16 @@ namespace PiGSF.Server
 
         public static Room? GetById(int rid) => roomsById!.GetValueOrDefault(rid, null);
         public static Room? GetByName(string roomName) => namedRooms!.GetValueOrDefault(roomName, null);
+        /// <summary>
+        /// Finds a currently registered room. Store a stable room identifier
+        /// (such as a name or application code), then resolve it here; callers
+        /// must not retain Room object references across disposal.
+        /// </summary>
+        public static Room? Find(Func<Room, bool> predicate)
+            => rooms.Copy().FirstOrDefault(predicate);
+        /// <summary>Finds all currently registered rooms matching a predicate.</summary>
+        public static List<Room> FindAll(Func<Room, bool> predicate)
+            => rooms.Copy().Where(predicate).ToList();
         public static Room GetOrCreate(string roomName, Func<int, Room> roomFactory)
         {
             return namedRooms.GetOrAdd(roomName, _ => roomFactory(NextRoomId++));
