@@ -346,21 +346,20 @@ namespace PiGSF.Server
                             HandleHTTPProtocol(Encoding.UTF8.GetString(buffer, 0, 2 + n), true);
                             if (!disconnectRequested) socket.Blocking = false;
                         }
-                        catch (AuthenticationException e)
+                        catch (AuthenticationException)
                         {
-                            if (e.InnerException != null)
-                            {
-                                //Console.WriteLine("Inner exception: {0}", e.InnerException.Message);
-                            }
-                            ServerLogger.Log("Authentication failed - " + e.ToString());
+                            // TLS scanners/clients can fail key negotiation before a
+                            // protocol is established. Disconnect silently; this is
+                            // not an actionable server error and can flood the log.
                             sslStream.Close();
                             client.Close();
                             disconnectRequested = true;
                             return;
                         }
-                        catch (IOException e)
+                        catch (IOException)
                         {
-                            ServerLogger.Log("Authentication failed - " + e.ToString());
+                            // A peer closing during the TLS preface is likewise a
+                            // normal failed connection attempt; keep it out of logs.
                             sslStream.Close();
                             client.Close();
                             disconnectRequested = true;
