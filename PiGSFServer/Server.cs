@@ -94,6 +94,7 @@ namespace PiGSF.Server
     keys        => Generates a RSA key pair
 
     players, p  => Lists all connected players
+    kp           => Lists all players known to the server (including disconnected)
     p [id]      => Searches player by id
     ps [user]   => Searches player by username/name/uid
                         
@@ -192,6 +193,12 @@ namespace PiGSF.Server
                 string str = "";
                 knownPlayers.ForEach(p => { if (p.IsConnected()) str += p.ToTableString() + "\n"; });
                 ServerLogger.WriteMessageToScreen(str.Length > 0 ? str : "No players connected");
+            }
+            else if (s == "kp")
+            {
+                string str = "";
+                knownPlayers.ForEach(p => str += p.ToTableString() + "\n");
+                ServerLogger.WriteMessageToScreen(str.Length > 0 ? str : "No players known");
             }
             else if (s.StartsWith("p "))
             {
