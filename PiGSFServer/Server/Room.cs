@@ -467,6 +467,7 @@ namespace PiGSF.Server
 
         // Disposable
         private bool disposedValue;
+        public bool IsDisposed() => disposedValue;
         static readonly object RoomDisposeMutex = new();
         protected virtual void Dispose(bool disposing)
         {
