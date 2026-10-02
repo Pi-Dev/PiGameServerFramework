@@ -694,7 +694,7 @@ namespace PiGSF.Server
                         try
                         {
                             active = false;
-                            Socket.Select(socketsToRead, null, null, 5000); // usual parking place
+                            Socket.Select(socketsToRead, null, null, 5 * 1000 * 1000); // usual parking place: five seconds in microseconds
                             active = true; // if true the worker will be preferred for new clients
                         }
                         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.Interrupted) { cleanup = true; }
@@ -716,7 +716,14 @@ namespace PiGSF.Server
                                         try
                                         {
                                             int bytesRead = s.Receive(buffer, sz, SocketFlags.Peek);
-                                            if (bytesRead > 4)
+                                            if (bytesRead == 0)
+                                            {
+                                                // A peer's graceful TCP shutdown is reported as a
+                                                // zero-byte read, not an exception. Leave cleanup to
+                                                // the normal sender/receiver disconnect handshake.
+                                                state.disconnectRequested = true;
+                                            }
+                                            else if (bytesRead > 4)
                                                 state.InitProtocol(buffer.AsSpan(0, bytesRead));
                                         }
                                         catch (Exception ex)
@@ -728,7 +735,14 @@ namespace PiGSF.Server
                                     else if (state.protocol != null)
                                     {
                                         int bytesRead = state.stream.Read(buffer, 0, buffer.Length);
-                                        if (bytesRead > 0)
+                                        if (bytesRead == 0)
+                                        {
+                                            // NetworkStream uses zero bytes to signal a graceful
+                                            // remote close. Without this flag Select immediately
+                                            // reports the socket readable again forever.
+                                            state.disconnectRequested = true;
+                                        }
+                                        else
                                         {
                                             var messages = state.protocol.AddData(buffer.AsSpan(0, bytesRead));
                                             foreach (var m in messages) state.AddReceivedMessage(m);
