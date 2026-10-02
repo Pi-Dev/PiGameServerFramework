@@ -63,6 +63,11 @@ namespace PiGSF.Server
             internal volatile bool disconnectRecvHandled = false;
             internal volatile bool disconnectSendHandled = false;
             internal volatile bool IsProtocolInitializing = false;
+            // A readable socket with an incomplete protocol preface must not be
+            // allowed to stay in the Select loop forever. The receiver only
+            // peeks these bytes, so they remain readable until the peer sends
+            // enough data or is disconnected.
+            internal int incompleteProtocolProbeCount = 0;
             internal Queue<byte[]> pendingReceivedMessages = new();
 
             internal void AddReceivedMessage(byte[] message)
@@ -724,7 +729,17 @@ namespace PiGSF.Server
                                                 state.disconnectRequested = true;
                                             }
                                             else if (bytesRead > 4)
+                                            {
                                                 state.InitProtocol(buffer.AsSpan(0, bytesRead));
+                                            }
+                                            else if (++state.incompleteProtocolProbeCount >= 16)
+                                            {
+                                                // TCP may fragment a legitimate preface, so permit a
+                                                // bounded number of peeks. A peer that permanently leaves
+                                                // one to four bytes pending would otherwise make Select
+                                                // return immediately forever and pin this worker's CPU.
+                                                state.disconnectRequested = true;
+                                            }
                                         }
                                         catch (Exception ex)
                                         {
